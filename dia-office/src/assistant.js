@@ -122,16 +122,27 @@ function mockGoal(msg, snap) {
   return { reply: `I've lined up ${actions.length} jobs for the team. Press each one, or "Do all" and I'll hand them out in order.`, actions };
 }
 
-export async function chat(message, history = []) {
+const LANG_NAME = { en: "English (Indian English)", hi: "Hindi, in Devanagari script", mr: "Marathi, in Devanagari script" };
+// Free test mode has no AI to translate, so only the greeting is in Hindi and Marathi; the rest stays English.
+const MOCK_HELLO = {
+  hi: (s, n) => `नमस्ते! मैं दिया हूँ। ऑफिस चल रहा है: टीम में ${s.team} लोग, ${s.leads} लीड, और ${n} फ़ैसले आपका इंतज़ार कर रहे हैं। बताइए, क्या करें?`,
+  mr: (s, n) => `नमस्कार! मी दिया. ऑफिस सुरू आहे: टीममध्ये ${s.team} जण, ${s.leads} लीड, आणि ${n} निर्णय तुमची वाट पाहत आहेत. सांगा, काय करूया?`
+};
+
+export async function chat(message, history = [], lang = "en") {
   const snap = await snapshot();
   let out;
-  if ((process.env.LLM_PROVIDER || "mock") === "mock") out = mockGoal(message, snap);
+  if ((process.env.LLM_PROVIDER || "mock") === "mock") {
+    out = mockGoal(message, snap);
+    if (MOCK_HELLO[lang] && /^(hi|hello|hey|namaste|namaskar|नमस्|हॅलो)/i.test(message.trim())) out.reply = MOCK_HELLO[lang](snap.stats, snap.approvals.length);
+  }
   else {
     const kb = await context(message, 3);
     out = await ask({
       agent: "dia", tier: "fast", maxTokens: 700, need: ["reply"],
       system: COMPANY() + ` You are Dia, the warm, cheerful owner-assistant who runs this virtual office. ` +
         `You talk to the human director. Answer in 1-3 short spoken sentences, friendly and specific, using the office data. ` +
+        `Reply in ${LANG_NAME[lang] || LANG_NAME.en}, the way a warm, educated person from Pune speaks it; keep company names and numbers as they are. ` +
         `You may suggest actions for the director to confirm: one, or up to 5 when they give you a bigger goal (split it into jobs for the right team). ` +
         `Never claim an action is done; say you've prepared it.`,
       prompt: `Office data:\n${JSON.stringify(snap)}\n\nCompany knowledge:\n${kb}\n\n` +

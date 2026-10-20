@@ -41,7 +41,7 @@ camera.position.set(0, 17, 22);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.target.set(0, 0.6, 3.4);
 controls.enableDamping = true;
-controls.minDistance = 8;
+controls.minDistance = 0.9;
 controls.maxDistance = 42;
 controls.maxPolarAngle = 1.32;
 controls.enablePan = true;
@@ -166,7 +166,7 @@ for (const [k, r] of Object.entries(DEPT)) {
 
 /* ---------- The building: canteen below, more departments above, lifts and stairs on every floor ---------- */
 const glassMat = new THREE.MeshPhysicalMaterial({ color: "#dff3f1", transmission: 0.6, transparent: true, opacity: 0.32, roughness: 0.15, thickness: 0.05 });
-const FLOOR_NAMES = ["Ground floor · Canteen & kitchen", "Floor 1 · Dia & core teams", "Floor 2 · Departments"];
+const FLOOR_NAMES = ["Ground floor · Entrance, canteen & kitchen", "Floor 1 · Dia & core teams", "Floor 2 · Departments"];
 // Many identical things (chairs, tables, desks) are drawn as one instanced mesh each, so 100+ seats stay fast.
 function instanced(geo, material, list, { cast = false, colors } = {}) {
   const m = new THREE.InstancedMesh(geo, material, list.length), o = new THREE.Object3D();
@@ -193,7 +193,7 @@ for (const [n, level] of levels.entries()) {
   // Floor name painted at the front edge.
   const plaque = new THREE.Mesh(new THREE.PlaneGeometry(9, 1.1), new THREE.MeshBasicMaterial({ map: textTexture(FLOOR_NAMES[n].toUpperCase(),
     { w: 1024, h: 128, bg: "#1b2a26", fg: "#ffffff", font: "700 60px 'Baloo 2', Mukta, system-ui, sans-serif" }), transparent: true }));
-  plaque.rotation.x = -Math.PI / 2; plaque.position.set(0, 0.02, 17.4); level.add(plaque);
+  plaque.rotation.x = -Math.PI / 2; plaque.position.set(0, 0.02, n === 0 ? 9.2 : 17.4); if (n === 0) plaque.scale.setScalar(0.8); level.add(plaque);
   // Lift core, back left.
   const core = mesh(new THREE.BoxGeometry(3.6, 2.8, 2.4), mat("#8c969c", { roughness: 0.6 }));
   core.position.set(-11.6, 1.4, -7.2); level.add(core);
@@ -241,7 +241,7 @@ for (const [x, w] of [[-11.6, 3.7], [11.4, 2.6]]) {
   // Tables: 4 x 4, eight chairs each.
   const tables = [], chairs = [];
   for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) {
-    const x = -10.2 + c * 6.8, z = -1.4 + r * 4.1; tables.push([x, 0.74, z]);
+    const x = -10.2 + c * 6.8, z = -1.6 + r * 3.15; tables.push([x, 0.74, z]);
     for (let k = 0; k < 4; k++) for (const sd of [-1, 1]) chairs.push([x - 1.2 + k * 0.8, 0.45, z + sd * 0.75, sd > 0 ? Math.PI : 0]);
   }
   L.add(instanced(new THREE.BoxGeometry(3.4, 0.08, 1.0), mat("#c79a6b", { roughness: 0.5 }), tables, { cast: true }));
@@ -256,10 +256,132 @@ for (const [x, w] of [[-11.6, 3.7], [11.4, 2.6]]) {
   L.add(instanced(new THREE.SphereGeometry(0.17, 14, 10), mat("#ffffff", { roughness: 0.5 }), bodies.map(b => [b[0], b[1] + 0.48, b[2]]), { colors: SKIN }));
   L.add(instanced(new THREE.CylinderGeometry(0.16, 0.13, 0.22, 12), mat("#ffffff"), servers.map(s => [s[0], 1.78, s[2]])));
   label(L, "CANTEEN · 128 SEATS", -10.2, 1.4, -3.6, 3, "#2f8a84");
-  // Reception at the front door.
-  const rec = mesh(new THREE.BoxGeometry(5, 1.1, 1), mat("#1b5e57", { roughness: 0.4 }), { receive: true }); rec.position.set(0, 0.55, 14.6); L.add(rec);
-  const recTop = mesh(new THREE.BoxGeometry(5.2, 0.06, 1.2), mat("#f2c14e", { metalness: 0.5, roughness: 0.3 })); recTop.position.set(0, 1.13, 14.6); L.add(recTop);
-  label(L, "INVEON TECHNOLOGIES · RECEPTION", 0, 1.9, 13.9, 4.6, "#0f6e6a");
+}
+
+/* Ground floor entrance: glass doors, reception with lifts behind, a lounge of velvet chairs, art walls, a coffee bar and hot desks. */
+function canvasTexture(w, h, draw) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+// Abstract canvases in the lobby's colours: beige, deep green, plum and ochre.
+function artTexture(seed) {
+  return canvasTexture(256, 320, (g, w, h) => {
+    let s = seed; const r = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+    g.fillStyle = "#e9e1d3"; g.fillRect(0, 0, w, h);
+    const cols = ["#1f4d3a", "#5a2a3a", "#c9a46a", "#8a8f86", "#d8c7a8", "#2c5e4a"];
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = cols[(i + seed) % cols.length]; g.beginPath();
+      const x = r() * w, y = r() * h, rx = 40 + r() * 90, ry = 50 + r() * 110;
+      if (i % 2) g.ellipse(x, y, rx, ry, r() * 3, 0, Math.PI * 2); else g.roundRect(x - rx / 2, y - ry / 2, rx * 0.7, ry * 1.2, 60);
+      g.fill();
+    }
+    g.strokeStyle = "#b08a5a"; g.lineWidth = 10; g.strokeRect(0, 0, w, h);
+  });
+}
+const rugTexture = canvasTexture(256, 256, (g, w, h) => {
+  g.fillStyle = "#cfcac2"; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 1800; i++) { g.fillStyle = `rgba(${90 + (i * 37) % 60},${88 + (i * 53) % 55},${84 + (i * 29) % 50},0.25)`; g.fillRect((i * 97) % w, (i * 61) % h, 3, 2); }
+});
+const velvet = (color, sheen) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.75, sheen: 1, sheenColor: new THREE.Color(sheen), sheenRoughness: 0.45 });
+// Tub armchair: soft seat, curved back and arms, four splayed wooden legs.
+function armchair(material) {
+  const g = new THREE.Group();
+  const seat = mesh(new THREE.CylinderGeometry(0.4, 0.36, 0.2, 28), material); seat.position.y = 0.45; seat.scale.z = 0.92; g.add(seat);
+  const shape = new THREE.Shape(); shape.absarc(0, 0, 0.44, Math.PI * 0.05, Math.PI * 0.95, false); shape.absarc(0, 0, 0.3, Math.PI * 0.95, Math.PI * 0.05, true);
+  const back = mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.42, bevelEnabled: true, bevelSize: 0.05, bevelThickness: 0.05, bevelSegments: 4, curveSegments: 24 }), material);
+  back.rotation.x = -Math.PI / 2; back.position.set(0, 0.5, 0.06); back.scale.y = 0.92; g.add(back);
+  for (const [x, z] of [[-0.25, -0.22], [0.25, -0.22], [-0.25, 0.22], [0.25, 0.22]]) {
+    const leg = mesh(new THREE.CylinderGeometry(0.018, 0.028, 0.38, 8), mat("#3b2a1e", { roughness: 0.5 }));
+    leg.position.set(x, 0.18, z); leg.rotation.set(-z * 0.5, 0, x * 0.5); g.add(leg);
+  }
+  return g;
+}
+{
+  const L = levels[0], Z0 = 9.6, Z1 = 18.2;
+  const concrete = mesh(new THREE.PlaneGeometry(30, Z1 - Z0), mat("#b9b1a5", { roughness: 0.32, metalness: 0.05 }), { cast: false, receive: true });
+  concrete.rotation.x = -Math.PI / 2; concrete.position.set(0, 0.004, (Z0 + Z1) / 2); L.add(concrete);
+  rugTexture.wrapS = rugTexture.wrapT = THREE.RepeatWrapping; rugTexture.repeat.set(3, 2);
+  for (const [x, z, w, d] of [[-1.6, 14.4, 6.4, 4.2], [8.6, 15.2, 5.6, 3.6]]) {
+    const rug = mesh(new THREE.PlaneGeometry(w, d), mat("#ffffff", { map: rugTexture, roughness: 1 }), { cast: false, receive: true });
+    rug.rotation.x = -Math.PI / 2; rug.position.set(x, 0.008, z); L.add(rug);
+  }
+  // Glass entrance doors with a bronze frame and the company name above.
+  const bronze = mat("#6e5236", { metalness: 0.7, roughness: 0.35 });
+  for (const x of [-2.6, -1.3, 1.3, 2.6]) { const p = mesh(new THREE.BoxGeometry(0.08, 2.7, 0.12), bronze); p.position.set(x, 1.35, Z1 - 0.1); L.add(p); }
+  const lintel = mesh(new THREE.BoxGeometry(5.4, 0.12, 0.14), bronze); lintel.position.set(0, 2.7, Z1 - 0.1); L.add(lintel);
+  for (const x of [-1.95, -0.65, 0.65, 1.95]) { const d = mesh(new THREE.BoxGeometry(1.24, 2.6, 0.03), glassMat, { cast: false }); d.position.set(x, 1.3, Z1 - 0.1); L.add(d); }
+  const mat_ = mesh(new THREE.PlaneGeometry(4.6, 1.4), mat("#3a3530", { roughness: 1 }), { cast: false, receive: true }); mat_.rotation.x = -Math.PI / 2; mat_.position.set(0, 0.01, Z1 - 0.9); L.add(mat_);
+  label(L, "INVEON TECHNOLOGIES", 0, 3.0, Z1 - 0.05, 3.4, "#1b2a26");
+  // Reception: stone desk with a light-wood top, and bronze lift doors in the wall behind it.
+  const wall = mesh(new THREE.BoxGeometry(9.2, 2.9, 0.3), mat("#e9e3da", { roughness: 0.8 }), { receive: true }); wall.position.set(-10.2, 1.45, 10.3); L.add(wall);
+  for (const x of [-13.2, -11.6, -10]) {
+    const door = mesh(new THREE.BoxGeometry(1.2, 2.25, 0.05), mat("#a07a4a", { metalness: 0.75, roughness: 0.3 }), { cast: false }); door.position.set(x, 1.13, 10.48); L.add(door);
+    const seam = mesh(new THREE.BoxGeometry(0.02, 2.25, 0.06), mat("#5a4128"), { cast: false }); seam.position.set(x, 1.13, 10.5); L.add(seam);
+  }
+  label(L, "LIFTS", -11.6, 2.55, 10.47, 1.4, "#6e5236");
+  const logoWall = mesh(new THREE.BoxGeometry(2.6, 1.0, 0.04), mat("#1f4d3a"), { cast: false }); logoWall.position.set(-7.3, 1.9, 10.47); L.add(logoWall);
+  label(L, "INVEON", -7.3, 1.9, 10.5, 2.2, "#1f4d3a");
+  const desk = mesh(new THREE.BoxGeometry(4.2, 1.05, 0.9), mat("#6f6a64", { roughness: 0.45 }), { receive: true }); desk.position.set(-9.6, 0.53, 12.6); L.add(desk);
+  const top = mesh(new THREE.BoxGeometry(4.4, 0.07, 1.1), mat("#c8a27a", { roughness: 0.4 })); top.position.set(-9.6, 1.09, 12.6); L.add(top);
+  const glow = mesh(new THREE.BoxGeometry(4.2, 0.04, 0.02), mat("#ffe2b0", { emissive: "#ffcf86", emissiveIntensity: 1.6 }), { cast: false }); glow.position.set(-9.6, 0.1, 13.06); L.add(glow);
+  // Backlit feature wall on the left with two canvases and the long green velvet sofa.
+  const fw = mesh(new THREE.BoxGeometry(0.3, 3, 6.2), mat("#f1ebe1", { roughness: 0.85 }), { receive: true }); fw.position.set(-14.75, 1.5, 14.6); L.add(fw);
+  const strip = mesh(new THREE.BoxGeometry(0.05, 0.05, 6), mat("#fff1d6", { emissive: "#ffd9a0", emissiveIntensity: 2 }), { cast: false }); strip.position.set(-14.58, 2.95, 14.6); L.add(strip);
+  [[13.3, 11], [15.9, 29]].forEach(([z, seed]) => {
+    const a = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 1.9), new THREE.MeshStandardMaterial({ map: artTexture(seed), roughness: 0.9 }));
+    a.rotation.y = Math.PI / 2; a.position.set(-14.58, 1.95, z); L.add(a);
+  });
+  const green = velvet("#1d4a37", "#4f8a6c");
+  const sofa = mesh(new THREE.BoxGeometry(0.9, 0.42, 3.6), green, { receive: true }); sofa.position.set(-13.95, 0.33, 14.6); L.add(sofa);
+  for (let i = 0; i < 9; i++) { // channel-tufted back
+    const rib = mesh(new THREE.CapsuleGeometry(0.17, 0.42, 4, 10), green); rib.position.set(-14.4, 0.78, 13.0 + i * 0.4); L.add(rib);
+  }
+  for (const s of [-1, 1]) { const arm = mesh(new THREE.CapsuleGeometry(0.16, 0.6, 4, 10), green); arm.rotation.z = Math.PI / 2; arm.position.set(-13.95, 0.6, 14.6 + s * 1.85); L.add(arm); }
+  // Lounge: plum velvet tub chairs round brass-and-wood drum tables, two rust chairs by the coffee bar.
+  const plum = velvet("#4e1f2e", "#9a5a72"), rust = velvet("#a4532f", "#e3a07a");
+  const drum = mat("#8a6a45", { metalness: 0.35, roughness: 0.4 });
+  for (const [x, z] of [[-3.4, 13.6], [0.2, 15.2]]) {
+    const t = mesh(new THREE.CylinderGeometry(0.45, 0.45, 0.42, 32), drum); t.position.set(x, 0.21, z); L.add(t);
+    const pot = mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.12, 12), mat("#f4f1ea")); pot.position.set(x, 0.48, z); L.add(pot);
+    const leaf = mesh(new THREE.SphereGeometry(0.1, 10, 8), mat("#4c8a4a")); leaf.position.set(x, 0.6, z); L.add(leaf);
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI * 2 + (x > 0 ? 0.6 : 0), c = armchair(plum);
+      c.position.set(x + Math.sin(a) * 1.15, 0, z + Math.cos(a) * 1.15); c.rotation.y = a + Math.PI; L.add(c);
+    }
+  }
+  for (const [x, z, ry] of [[4.6, 12.4, -2.2], [5.9, 12.9, 2.5]]) { const c = armchair(rust); c.position.set(x, 0, z); c.rotation.y = ry; L.add(c); }
+  const side = mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.45, 24), drum); side.position.set(5.25, 0.23, 12.0); L.add(side);
+  // Concrete columns.
+  for (const [x, z] of [[-5.4, 11.2], [4.2, 11.2]]) { const c = mesh(new THREE.BoxGeometry(0.7, 3.2, 0.7), mat("#a9a49d", { roughness: 0.9 })); c.position.set(x, 1.6, z); L.add(c); }
+  // Coffee bar on the right: wooden cabinet, glowing shelves, machine and cups.
+  const bar = mesh(new THREE.BoxGeometry(0.8, 1.0, 3.4), mat("#7a5638", { roughness: 0.45 }), { receive: true }); bar.position.set(14.4, 0.5, 11.9); L.add(bar);
+  const barTop = mesh(new THREE.BoxGeometry(0.9, 0.06, 3.5), mat("#efe9df", { roughness: 0.3 })); barTop.position.set(14.4, 1.03, 11.9); L.add(barTop);
+  const shelfBack = mesh(new THREE.BoxGeometry(0.1, 1.6, 3.4), mat("#5b3d27"), { receive: true }); shelfBack.position.set(14.85, 2.0, 11.9); L.add(shelfBack);
+  for (const y of [1.55, 2.05, 2.55]) {
+    const sh = mesh(new THREE.BoxGeometry(0.4, 0.04, 3.3), mat("#ffe7bf", { emissive: "#ffcf8a", emissiveIntensity: 0.8 }), { cast: false }); sh.position.set(14.65, y, 11.9); L.add(sh);
+    L.add(instanced(new THREE.CylinderGeometry(0.05, 0.05, 0.22, 10), mat("#ffffff", { roughness: 0.3 }), Array.from({ length: 9 }, (_, i) => [14.65, y + 0.13, 10.5 + i * 0.35]), { colors: ["#2f2a26", "#a4532f", "#efe9df", "#1d4a37"] }));
+  }
+  const machine = mesh(new THREE.BoxGeometry(0.5, 0.45, 0.6), mat("#c9ccd0", { metalness: 0.8, roughness: 0.25 })); machine.position.set(14.4, 1.29, 11.2); L.add(machine);
+  label(L, "COFFEE BAR", 14.6, 3.1, 11.9, 1.8, "#7a5638").rotation.y = -Math.PI / 2;
+  // Hot desks: white desks, all-in-one screens, grey mesh chairs; teal stools at a high table.
+  for (const z of [14.4, 16.4]) {
+    const d = mesh(new THREE.BoxGeometry(4.8, 0.06, 1.0), mat("#f3f3f1", { roughness: 0.35 }), { receive: true }); d.position.set(9.4, 0.76, z); L.add(d);
+    for (const x of [7.2, 11.6]) { const leg = mesh(new THREE.BoxGeometry(0.06, 0.74, 0.9), mat("#d9d9d6")); leg.position.set(x, 0.37, z); L.add(leg); }
+  }
+  const screens = [], chairs = [];
+  for (const z of [14.4, 16.4]) for (const x of [8.0, 9.4, 10.8]) { screens.push([x, 1.08, z - 0.2]); chairs.push([x, 0, z + 0.75]); }
+  L.add(instanced(new THREE.BoxGeometry(0.62, 0.42, 0.03), mat("#111315", { roughness: 0.2 }), screens));
+  L.add(instanced(new THREE.BoxGeometry(0.62, 0.06, 0.035), mat("#e6e6e3"), screens.map(s => [s[0], s[1] - 0.24, s[2]])));
+  L.add(instanced(new THREE.BoxGeometry(0.06, 0.24, 0.06), mat("#d0d0cc", { metalness: 0.6 }), screens.map(s => [s[0], 0.9, s[2] + 0.04])));
+  L.add(instanced(new THREE.BoxGeometry(0.5, 0.07, 0.48), mat("#30474a"), chairs.map(c => [c[0], 0.5, c[2]])));
+  L.add(instanced(new THREE.BoxGeometry(0.5, 0.55, 0.05), mat("#c4c6c4", { roughness: 0.7 }), chairs.map(c => [c[0], 0.85, c[2] + 0.24])));
+  L.add(instanced(new THREE.CylinderGeometry(0.035, 0.035, 0.45, 8), mat("#c4c6c4", { metalness: 0.6 }), chairs.map(c => [c[0], 0.25, c[2]])));
+  const hi = mesh(new THREE.BoxGeometry(2.4, 0.06, 0.8), mat("#c8a27a", { roughness: 0.4 })); hi.position.set(9.4, 1.05, 11.6); L.add(hi);
+  const hiLeg = mesh(new THREE.BoxGeometry(2.2, 1.0, 0.1), mat("#e9e3da")); hiLeg.position.set(9.4, 0.52, 11.6); L.add(hiLeg);
+  L.add(instanced(new THREE.CylinderGeometry(0.2, 0.18, 0.12, 18), mat("#1f5a55", { roughness: 0.6 }), [8.6, 9.4, 10.2].map(x => [x, 0.8, 12.2])));
+  L.add(instanced(new THREE.CylinderGeometry(0.02, 0.02, 0.78, 6), mat("#222"), [8.6, 9.4, 10.2].map(x => [x, 0.39, 12.2])));
+  // Warm lobby light.
+  const warm = new THREE.PointLight("#ffd9a8", 18, 16, 1.6); warm.position.set(-2, 3.4, 14); L.add(warm);
 }
 
 /* Floor 2: a glass board room, and each department's head cabin and open desks. */
@@ -306,11 +428,22 @@ function openDesk(r, i) {
 /* ---------- People ---------- */
 function hair(style, color, scale = 1) {
   const g = new THREE.Group(), m = mat(color, { roughness: 0.38, metalness: 0.05 });
+  if (style === "dia") {
+    // Centre-parted long hair that frames her face, like her portrait.
+    m.roughness = 0.55;
+    const cap = mesh(new THREE.SphereGeometry(0.4, 32, 18, 0, Math.PI * 2, 0, Math.PI * 0.4), m);
+    cap.rotation.x = -0.5; cap.position.set(0, 0.06, -0.02); cap.scale.set(0.98, 1.12, 1); g.add(cap);
+    for (const s of [-1, 1]) {
+      const side = mesh(new THREE.SphereGeometry(0.405, 20, 20, Math.PI / 2 - s * 1.12 - 0.42, 0.84, 0.2, 1.9), m);
+      side.scale.set(1, 1.14, 1); side.position.y = 0.02; g.add(side);
+    }
+  } else {
   const cap = mesh(new THREE.SphereGeometry(0.385, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.52), m);
   cap.rotation.x = -0.42; cap.position.set(0, 0.04, -0.03); g.add(cap);
   // Side-swept fringe with a parting, so the forehead and eyes stay visible.
   const fringe = mesh(new THREE.SphereGeometry(0.395, 24, 10, -Math.PI * 0.05, Math.PI * 0.5, Math.PI * 0.2, Math.PI * 0.13), m);
   fringe.rotation.set(-0.15, 0, 0.18); g.add(fringe);
+  }
   if (style === "long" || style === "dia") {
     const back = mesh(new THREE.CapsuleGeometry(0.33, style === "dia" ? 0.95 : 0.55, 8, 20), m);
     back.position.set(0, style === "dia" ? -0.55 : -0.35, -0.16); back.scale.set(1.08, 1, 0.62); g.add(back);
@@ -333,9 +466,34 @@ function hair(style, color, scale = 1) {
   return g;
 }
 
+// Dia's face texture: the face area of the talking portrait (talkingface.js), feathered into her skin tone.
+let faceTex = null;
+function photoFace() {
+  const W = 320, H = 370, SX = 160, SY = 120; // forehead to chin, cheek to cheek, in dia.jpg pixels
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const mask = document.createElement("canvas"); mask.width = W; mask.height = H;
+  const m = mask.getContext("2d"), grad = m.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, W / 2);
+  grad.addColorStop(0, "rgba(0,0,0,1)"); grad.addColorStop(1, "rgba(0,0,0,0)");
+  m.save(); m.translate(W / 2, H / 2); m.scale(1, H / W); m.translate(-W / 2, -H / 2); m.fillStyle = grad; m.fillRect(0, 0, W, W); m.restore();
+  faceTex = new THREE.CanvasTexture(c); faceTex.colorSpace = THREE.SRGBColorSpace;
+  const paint = src => {
+    g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, W, H);
+    g.drawImage(src, SX, SY, W, H, 0, 0, W, H);
+    g.globalCompositeOperation = "destination-in"; g.drawImage(mask, 0, 0);
+    faceTex.needsUpdate = true;
+  };
+  if (window.DiaFace) window.DiaFace.onFrame(paint);
+  // Eyes land at eye height on the head and the chin at the bottom of the skull.
+  const geo = new THREE.SphereGeometry(0.364, 48, 40, Math.PI / 2 - 0.86, 1.72, 0.88, 1.5);
+  const face = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: faceTex, transparent: true, depthWrite: false, roughness: 0.55, emissive: "#ffffff", emissiveMap: faceTex, emissiveIntensity: 0.22 }));
+  face.scale.set(0.94, 1.12, 0.98);
+  return face;
+}
+
 function makePerson(a, { scale = 1, dia = false } = {}) {
   const look = a.look || {};
-  const skin = mat(dia ? "#c98a64" : SKIN[look.skin ?? 0] || SKIN[0], { roughness: 0.5 });
+  const skin = mat(dia ? "#c08a69" : SKIN[look.skin ?? 0] || SKIN[0], { roughness: 0.5 });
   const shirtColor = dia ? "#1f6b45" : look.shirt || "#2b6cb0";
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body); root.userData.agentId = a.id;
@@ -391,9 +549,10 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
 
   // Head with a friendly face.
   const head = new THREE.Group(); head.position.y = 1.86; body.add(head);
-  const skull = mesh(new THREE.SphereGeometry(0.36, 32, 24), skin); skull.scale.set(1, 1.04, 0.98); head.add(skull);
+  const skull = mesh(new THREE.SphereGeometry(0.36, 32, 24), skin); skull.scale.set(dia ? 0.94 : 1, dia ? 1.12 : 1.04, 0.98); head.add(skull);
   for (const s of [-1, 1]) { const ear = mesh(new THREE.SphereGeometry(0.075, 10, 8), skin); ear.position.set(s * 0.35, -0.02, 0); ear.scale.set(0.6, 1, 0.8); head.add(ear); }
   const eyes = new THREE.Group(); eyes.position.set(0, 0.03, 0.3); head.add(eyes);
+  const cartoon = [eyes];
   for (const s of [-1, 1]) {
     const e = new THREE.Group(); e.position.x = s * 0.125; eyes.add(e);
     const white = new THREE.Mesh(new THREE.SphereGeometry(dia ? 0.078 : 0.068, 16, 12), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.3 }));
@@ -407,9 +566,9 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
       lash.position.set(s * 0.03 + i * 0.03, 0.07, 0.03); lash.rotation.z = -s * 0.35 + i * 0.25; e.add(lash);
     }
     const brow = mesh(new THREE.BoxGeometry(0.12, 0.022, 0.02), mat(look.hair || "#2a1a14"), { cast: false });
-    brow.position.set(s * 0.125, 0.15, 0.31); brow.rotation.z = s * 0.14; head.add(brow);
+    brow.position.set(s * 0.125, 0.15, 0.31); brow.rotation.z = s * 0.14; head.add(brow); cartoon.push(brow);
     const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshStandardMaterial({ color: "#f08a8a", transparent: true, opacity: 0.45, roughness: 1 }));
-    cheek.position.set(s * 0.2, -0.08, 0.27); cheek.scale.set(1, 0.6, 0.4); head.add(cheek);
+    cheek.position.set(s * 0.2, -0.08, 0.27); cheek.scale.set(1, 0.6, 0.4); head.add(cheek); cartoon.push(cheek);
   }
   const nose = mesh(new THREE.SphereGeometry(0.035, 10, 8), skin, { cast: false }); nose.position.set(0, -0.04, 0.35); head.add(nose);
   // Smile (always) and an open mouth that shows while talking.
@@ -417,7 +576,11 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
   smile.position.set(0, -0.12, 0.32); smile.rotation.set(-0.25, 0, Math.PI); head.add(smile);
   const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 10), new THREE.MeshStandardMaterial({ color: "#5a1a22", roughness: 0.6 }));
   mouth.position.set(0, -0.15, 0.31); mouth.scale.set(1.1, 0.05, 0.4); head.add(mouth);
-  if (look.bindi || dia) { const b = mesh(new THREE.SphereGeometry(0.022, 10, 8), mat("#c2264b"), { cast: false }); b.position.set(0, 0.17, 0.345); head.add(b); }
+  if (dia) { // Dia wears her real face: the live talking portrait, wrapped onto the front of her head.
+    for (const o of [...cartoon, nose, smile, mouth]) o.visible = false;
+    head.add(photoFace());
+  }
+  if (look.bindi && !dia) { const b = mesh(new THREE.SphereGeometry(0.022, 10, 8), mat("#c2264b"), { cast: false }); b.position.set(0, 0.17, 0.345); head.add(b); }
   if (look.glasses) {
     const gm = mat("#1d1d1d", { metalness: 0.3 });
     for (const s of [-1, 1]) { const ring = mesh(new THREE.TorusGeometry(0.075, 0.012, 8, 20), gm, { cast: false }); ring.position.set(s * 0.125, 0.03, 0.36); head.add(ring); }
@@ -472,7 +635,7 @@ function makeDesk(color, name, role) {
 const people = new Map(); // id -> { person, desk, anchor }
 const bubbles = new Map(); // id -> HTMLElement
 const overlay = document.createElement("div"); overlay.className = "o3d-overlay"; host.appendChild(overlay);
-let selectedId = "dia", selRing;
+let selectedId = "dia", selRing, greeter = null;
 {
   selRing = mesh(new THREE.TorusGeometry(0.62, 0.035, 8, 40), new THREE.MeshBasicMaterial({ color: "#0f8a84" }), { cast: false });
   selRing.rotation.x = Math.PI / 2; selRing.position.y = 0.03; level1.add(selRing);
@@ -488,7 +651,15 @@ function addPerson(a) {
     const p = makePerson(a, { scale: 1.32, dia: true });
     p.root.position.set(-0.6, 0, -5.9); p.root.rotation.y = 0.12;
     level1.add(p.root);
-    people.set("dia", { person: p, level: level1, anchor: new THREE.Vector3(-0.6, 3.25, -5.9) });
+    const entry = { person: p, level: level1, anchor: new THREE.Vector3(-0.6, 3.25, -5.9) };
+    people.set("dia", entry);
+    // Swap in her realistic body once it has downloaded; the cartoon stays if it can't load.
+    import("./diabody.js").then(m => m.loadRealDia()).then(real => {
+      p.body.visible = false; p.root.add(real.model); p.real = real; entry.anchor.y = 2.55;
+      // A second Dia welcomes visitors in the ground-floor entrance, beside reception.
+      greeter = real.copy(); greeter.model.scale.multiplyScalar(1.32);
+      greeter.model.position.set(-6.9, 0, 13.6); greeter.model.rotation.y = 0.45; levels[0].add(greeter.model);
+    }).catch(e => console.warn("Dia's realistic body did not load, keeping the simple one.", e));
     return;
   }
   const r = rooms[a.dept] || rooms.eng;
@@ -555,17 +726,19 @@ function homeDistance() {
   return Math.max(13.2 * 1.25 / Math.tan(hfov / 2), 13.6 / Math.tan(v / 2)) * 0.98;
 }
 let closeUp = false, view = "f1";
+const LOBBY_DIR = new THREE.Vector3(0.05, 0.62, 0.78).normalize();
 const ALL_DIR = new THREE.Vector3(0.62, 0.52, 0.7).normalize();
 const levelShown = l => l.visible;
 function home() {
   if (view === "all") { controls.target.set(0, 0, 4.2); camera.position.copy(controls.target).addScaledVector(ALL_DIR, homeDistance() * 2.0); return; }
+  if (view === "lobby") { controls.target.set(-0.5, 0, 12.2).add(levels[0].position); camera.position.copy(controls.target).addScaledVector(LOBBY_DIR, homeDistance() * 0.74); return; }
   const n = view === "ground" ? 0 : view === "f2" ? 2 : 1;
   controls.target.copy(HOME).add(levels[n].position); camera.position.copy(controls.target).addScaledVector(VIEW_DIR, homeDistance());
 }
 function showFloor(v) {
   view = v; closeUp = false; fit.moved = false;
   // The whole-building view pulls the floors further apart so you can see into each one.
-  levels.forEach((l, n) => { l.visible = v === "all" || (v === "ground" ? 0 : v === "f2" ? 2 : 1) === n; l.position.y = (n - 1) * (v === "all" ? FLOOR_GAP * 1.6 : FLOOR_GAP); });
+  levels.forEach((l, n) => { l.visible = v === "all" || (v === "ground" || v === "lobby" ? 0 : v === "f2" ? 2 : 1) === n; l.position.y = (n - 1) * (v === "all" ? FLOOR_GAP * 1.6 : FLOOR_GAP); });
   shafts.visible = v === "all";
   controls.maxDistance = homeDistance() * (v === "all" ? 2.4 : 1.4);
   home();
@@ -593,8 +766,10 @@ function place(el, pos) {
 renderer.setAnimationLoop(() => {
   const dt = Math.min(clock.getDelta(), 0.05), now = clock.elapsedTime;
   controls.update();
+  if (greeter && levels[0].visible) greeter.update(dt);
   for (const [id, { person: p, anchor }] of people) {
     p.t += dt;
+    if (p.real) p.real.update(dt, p.speaking && !reduceMotion);
     if (p.pop !== undefined) { p.pop = Math.min(1, p.pop + dt * 2.2); const k = 1 - Math.pow(1 - p.pop, 3); p.root.scale.setScalar((id === "dia" ? 1.32 : 1) * (0.01 + k * 0.99 * (1 + Math.sin(p.pop * Math.PI) * 0.12))); if (p.pop >= 1) delete p.pop; }
     if (!reduceMotion) {
       // Breathing, blinking, and a small head turn toward the camera.
@@ -602,6 +777,7 @@ renderer.setAnimationLoop(() => {
       p.eyes.scale.y = (p.t % 4.3) < 0.12 ? 0.1 : 1;
       p.head.rotation.y = Math.sin(p.t * 0.6) * 0.18;
       p.head.rotation.z = Math.sin(p.t * 0.9) * 0.04;
+      if (id === "dia") { p.body.rotation.z = Math.sin(p.t * 0.35) * 0.018; p.body.rotation.y = Math.sin(p.t * 0.22) * 0.06; if (!p.speaking) p.head.rotation.x = Math.sin(p.t * 0.5) * 0.03; }
       if (p.gem) { p.gem.rotation.y += dt * 1.6; p.gem.position.y = 2.42 + Math.sin(p.t * 2) * 0.05; }
     }
     // Arms: typing while working, waving when Dia greets, resting otherwise.
@@ -609,6 +785,12 @@ renderer.setAnimationLoop(() => {
     if (p.wave > 0) {
       p.wave -= dt;
       R.rotation.z = -2.5 + Math.sin(now * 12) * 0.35; R.rotation.x = 0;
+    } else if (p.speaking && !reduceMotion) {
+      // Talking with her hands: slow, relaxed gestures that never repeat exactly.
+      const g1 = Math.sin(now * 1.9) * 0.5 + Math.sin(now * 3.1) * 0.2, g2 = Math.sin(now * 1.6 + 2) * 0.5 + Math.sin(now * 2.7) * 0.2;
+      R.rotation.x += ((-0.75 + g1 * 0.35) - R.rotation.x) * 0.08; R.rotation.z += ((0.35 + g1 * 0.12) - R.rotation.z) * 0.08;
+      L.rotation.x += ((-0.55 + g2 * 0.3) - L.rotation.x) * 0.08; L.rotation.z += ((-0.3 - g2 * 0.1) - L.rotation.z) * 0.08;
+      p.head.rotation.x = Math.sin(now * 4.2) * 0.04 + Math.sin(now * 1.3) * 0.03;
     } else if (p.working && id !== "dia") {
       L.rotation.x = -1.1 + Math.sin(now * 16) * 0.08; R.rotation.x = -1.1 + Math.sin(now * 16 + 1.5) * 0.08;
       L.rotation.z = -0.25; R.rotation.z = 0.25;
@@ -652,10 +834,14 @@ const api = {
   handoff,
   select,
   talk(on) { const d = people.get("dia"); if (d) d.person.speaking = !!on; },
-  wave() { const d = people.get("dia"); if (d && !reduceMotion) d.person.wave = 2.2; },
+  wave() { const d = people.get("dia"); if (d && !reduceMotion) { d.person.wave = 2.2; d.person.real?.wave(); } },
   showFloor,
   floorOf(id) { const p = people.get(id); return p ? ["ground", "f1", "f2"][levels.indexOf(p.level)] : null; },
-  focusDia() { if (view !== "f1") showFloor("f1"); closeUp = true; controls.target.set(-0.6, 2.35, -5.9); camera.position.set(-0.1, 3.1, -1.6); },
+  focusDia() {
+    if (view !== "f1") showFloor("f1"); closeUp = true;
+    if (people.get("dia")?.person.real) { controls.target.set(-0.6, 1.9, -5.9); camera.position.set(-0.55, 1.93, -5.0); }
+    else { controls.target.set(-0.6, 2.35, -5.9); camera.position.set(-0.1, 3.1, -1.6); }
+  },
   resetView() { showFloor(view); },
   onSelect: null
 };

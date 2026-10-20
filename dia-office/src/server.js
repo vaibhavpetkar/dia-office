@@ -13,6 +13,7 @@ import { newLead } from "./workflows/sales.js";
 import { newCandidate, getInterview, submitAnswers } from "./workflows/hiring.js";
 import { setStage, STAGES } from "./workflows/engineering.js";
 import { chat } from "./assistant.js";
+import { speech } from "./voice.js";
 import { selfCheck, scheduleSelfCheck } from "./selfcheck.js";
 import { proposeFix } from "./repair.js";
 import { DEPTS } from "./agents.js";
@@ -49,7 +50,7 @@ const tokenState = () => !process.env.ADMIN_TOKEN ? "missing" : process.env.ADMI
 
 const health = () => ({
   db, admin_token: tokenState(), provider: process.env.LLM_PROVIDER || "mock",
-  ses: !!process.env.SES_FROM, platform: process.platform
+  ses: !!process.env.SES_FROM, platform: process.platform, tts: process.env.AZURE_SPEECH_KEY ? "azure" : "browser"
 });
 app.get("/api/health", (_req, res) => res.json(health()));
 let retrying;
@@ -209,7 +210,12 @@ app.post("/api/projects/:id/marketing", admin, wrap(async (req, res) => {
 app.post("/api/dia/chat", admin, wrap(async (req, res) => {
   need(req.body, ["message"]);
   const history = Array.isArray(req.body.history) ? req.body.history.slice(-8).map(h => ({ role: h.role === "dia" ? "Dia" : "Director", text: String(h.text).slice(0, 1000) })) : [];
-  res.json(await chat(String(req.body.message).slice(0, 2000), history));
+  res.json(await chat(String(req.body.message).slice(0, 2000), history, ["en", "hi", "mr"].includes(req.body.lang) ? req.body.lang : "en"));
+}));
+app.post("/api/dia/tts", admin, wrap(async (req, res) => {
+  need(req.body, ["text"]);
+  if (limited("tts", req.ip, 40, 60 * 1000)) return res.status(429).json({ error: "Too many voice requests. Wait a minute." });
+  res.set("content-type", "audio/mpeg").send(await speech(String(req.body.text).slice(0, 1500), req.body.lang));
 }));
 app.post("/api/dia/selfcheck", admin, wrap(async (_req, res) => res.json(await selfCheck({ getHealth: health }))));
 app.post("/api/dia/repair", admin, wrap(async (req, res) => res.json(await proposeFix(req.body?.problem_id))));

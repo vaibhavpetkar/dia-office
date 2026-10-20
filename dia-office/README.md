@@ -34,7 +34,7 @@ If the database isn't reachable, the page shows a setup screen that says what we
 
 | Option | Steps |
 |---|---|
-| **Free cloud database (no Docker, works on Windows)** | Create a free project on [Neon](https://neon.tech) or [Supabase](https://supabase.com). Both include pgvector. Copy the connection string and run `npm run setup -- "postgres://USER:PASS@HOST/DB?sslmode=require"` |
+| **Free cloud database (no Docker, works on Windows)** | Create a free project on [Neon](https://neon.tech) or [Supabase](https://supabase.com). Both include pgvector. Copy the connection string and run `npm run setup -- "postgres://USER:PASS@HOST/DB?sslmode=require"`. On Neon, pick the region nearest you (Singapore or Mumbai for India) and use the **pooled** connection string (host contains `-pooler`). A free database sleeps when idle; the office waits up to 20 seconds for it to wake and retries once |
 | **Docker** | `docker compose up -d`. The default `DATABASE_URL` already points at it. |
 | **Postgres on Linux or WSL** | `sudo apt install postgresql-16-pgvector`, then create user and database `dia` with password `dia`. |
 
@@ -56,6 +56,19 @@ Set `LLM_PROVIDER=ollama` and `EMBED_DIM=768`.
 4. IAM permissions: `bedrock:InvokeModel` (and `ses:SendEmail` if you send email).
 
 Haiku handles routine steps. Sonnet is used only for Dia's decisions, interview scoring and build plans.
+
+## Dia's face and voice
+
+Dia's face is her portrait brought to life on a canvas (`public/talkingface.js`): she blinks, breathes, moves her head, and her lower lip and jaw move as she speaks.
+
+In 3D she has a realistic full body (`public/diabody.js`): a rigged human from Microsoft's [Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) library (MIT, see `public/models/dia/LICENSE-rocketbox.md`), dressed in her green blazer, black top and charcoal trousers, with her face, skin tone, brown eyes, bindi and long dark hair. Motion-captured clips move her body (relaxed standing, talking gestures, a wave), and the model's facial blendshapes move her lips with the same voice level as the chat face, blink and smile. She stands in her cabin on floor 1 and welcomes visitors in the ground-floor **Entrance** (glass doors, reception with lifts, velvet lounge, art wall, coffee bar, hot desks). If the model can't load, the simple 3D Dia is shown instead.
+
+Pick **EN / हिं / मरा** under her name. Dia answers in that language (with Ollama or Bedrock; free test mode only greets in Hindi and Marathi) and the microphone listens in it.
+
+| Voice | How | Quality |
+|---|---|---|
+| Browser (free) | Open the office in **Microsoft Edge**. Edge includes natural voices: Neerja (English), Swara (Hindi), Aarohi (Marathi) | Natural. Chrome on Windows usually has no Marathi voice; the page tells you when one is missing |
+| Azure neural (any browser) | Create a Speech resource in Azure, then set `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` in `.env` | The same natural voices on every browser and phone, and lip-sync follows the real audio |
 
 ## Teach Dia about your company (RAG)
 
@@ -111,6 +124,6 @@ For AWS (EC2 + RDS or Neon + Bedrock + SES, HTTPS with Caddy), follow **[docs/DE
 - The AI plans, analyses, scores and writes drafts. Building and deploying real client software is still done by your developers (or Claude Code). The office tracks it when you move the stage.
 - AI interview scores support a person's decision; they don't replace it. Keep a human approving every hire.
 - There is one director key. Separate logins and roles for several people are not built yet.
-- Dia's face in the chat is her portrait with blinking, breathing and mouth movement layered on top; the 3D Dia on the floor is a stylised model dressed to match. A photoreal 3D head would need a dedicated avatar service.
+- Dia's 3D face is her photo painted onto a stock scanned head, so the shape of her face is the model's, not hers, and the top of her hair is the model's own. A 3D scan of her real face (or a paid avatar service) would be needed for a true likeness. The other staff are still simple figures.
 - Floor 2 departments start empty: their desks fill as you hire into them. The diners in the canteen are decoration.
 - The Python agents in `dia-ai/` are a separate prototype; the office does not call them.

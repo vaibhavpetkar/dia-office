@@ -258,14 +258,7 @@ pre.diff .add{display:block;color:var(--ok)}
 .diaName small{color:var(--muted);font-size:.74rem}
 .diaFace{position:relative;flex:none;width:58px;height:58px;padding:0;border:2px solid var(--peacock);border-radius:50%;overflow:hidden;cursor:zoom-in;background:#2a1a12;
   box-shadow:0 0 0 3px color-mix(in srgb,var(--peacock) 18%,transparent);transition:width .3s,height .3s,border-radius .3s}
-.diaFace img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:breathe 5s ease-in-out infinite;transform-origin:50% 80%}
-/* lower lip to chin, nudged down while talking so the mouth opens a little */
-.diaFace .jaw{clip-path:polygon(36% 61.5%,64% 61.5%,66% 70%,58% 74%,42% 74%,34% 70%);animation:breathe 5s ease-in-out infinite}
-.chat.speaking .diaFace .jaw{animation:jaw .19s ease-in-out infinite alternate}
-.diaFace .lid{position:absolute;width:11%;height:5.5%;top:37.6%;border-radius:50% 50% 45% 45%;transform:scaleY(0);transform-origin:50% 0;
-  background:linear-gradient(#93664a,#8a5c42 70%,#3a2016);animation:blink 4.7s infinite}
-.diaFace .lid.l{left:32.6%;background:linear-gradient(#9a6b4f,#8f6046 70%,#3a2016)}
-.diaFace .lid.r{left:53.5%;top:37.3%;background:linear-gradient(#7d5036,#6e4630 70%,#30190f);animation-delay:.02s}
+.diaFace canvas{position:absolute;inset:0;width:100%;height:100%}
 .chat.speaking .diaFace{border-color:var(--marigold);box-shadow:0 0 0 4px color-mix(in srgb,var(--marigold) 30%,transparent),0 0 18px color-mix(in srgb,var(--marigold) 45%,transparent)}
 .chat.bigface header{flex-wrap:wrap}
 .chat.bigface .diaFace{width:100%;height:auto;aspect-ratio:1;border-radius:14px;cursor:zoom-out}
@@ -274,12 +267,14 @@ pre.diff .add{display:block;color:var(--ok)}
 .eq i{width:3px;background:var(--marigold);border-radius:2px;animation:eq .5s ease-in-out infinite alternate}
 .eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.24s}.eq i:nth-child(4){animation-delay:.08s}
 .chat.speaking .eq{display:flex}
-.brand .diaMini img{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--peacock)}
-@keyframes breathe{50%{transform:scale(1.012) translateY(-.4%)}}
-@keyframes jaw{from{transform:translateY(0)}to{transform:translateY(1.3%) scaleY(1.03)}}
-@keyframes blink{0%,95.5%,100%{transform:scaleY(0)}97.5%{transform:scaleY(1)}}
+.brand .diaMini canvas{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--peacock)}
+.langs{display:flex;gap:4px;margin-top:4px}
+.chip.lang{padding:2px 9px;font-size:.78rem}
+.chip.lang[aria-pressed="true"]{background:var(--peacock);color:#fff;border-color:var(--peacock)}
+.vnote{color:var(--muted);font-size:.68rem;margin-top:2px}
+.vnote.warn{color:var(--kumkum)}
 @keyframes eq{from{height:3px}to{height:12px}}
-@media (prefers-reduced-motion:reduce){.diaFace img,.diaFace .lid,.eq i{animation:none!important}}
+@media (prefers-reduced-motion:reduce){.eq i{animation:none!important}}
 
 /* Support and finance */
 .quote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--line);color:var(--muted);font-style:italic;white-space:pre-wrap}

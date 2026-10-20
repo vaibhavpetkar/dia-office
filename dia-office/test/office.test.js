@@ -221,3 +221,20 @@ test("Support, Finance and the floor 2 departments take new hires", async () => 
   assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Kiran", role: "Designer", dept: "design" } })).status, 202, "floor 2 departments take hires");
   assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Riya", role: "Accountant", dept: "space" } })).status, 400);
 });
+
+test("Dia greets in Marathi and Hindi, and the cloud voice explains when it isn't set up", async () => {
+  const mr = (await call("/api/dia/chat", { method: "POST", body: { message: "namaskar", lang: "mr" } })).body;
+  assert.match(mr.reply, /नमस्कार! मी दिया/);
+  const hi = (await call("/api/dia/chat", { method: "POST", body: { message: "hello", lang: "hi" } })).body;
+  assert.match(hi.reply, /नमस्ते! मैं दिया/);
+  assert.equal((await call("/api/health")).body.tts, "browser");
+  const tts = await call("/api/dia/tts", { method: "POST", body: { text: "hello", lang: "mr" } });
+  assert.equal(tts.status, 400); assert.match(tts.body.error, /AZURE_SPEECH_KEY/);
+});
+
+test("sslmode in DATABASE_URL becomes a verified TLS option without the pg warning", async () => {
+  const { connectionOptions } = await import("../src/db.js");
+  assert.deepEqual(connectionOptions("postgres://u:p@h/db?sslmode=require&channel_binding=require"),
+    { connectionString: "postgres://u:p@h/db?channel_binding=require", ssl: { rejectUnauthorized: true } });
+  assert.deepEqual(connectionOptions("postgres://u:p@h/db"), { connectionString: "postgres://u:p@h/db" });
+});
