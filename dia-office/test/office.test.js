@@ -238,3 +238,43 @@ test("sslmode in DATABASE_URL becomes a verified TLS option without the pg warni
     { connectionString: "postgres://u:p@h/db?channel_binding=require", ssl: { rejectUnauthorized: true } });
   assert.deepEqual(connectionOptions("postgres://u:p@h/db"), { connectionString: "postgres://u:p@h/db" });
 });
+
+test("Engineering's website runs live in the sandbox, isolated, and a change request makes a new version", async () => {
+  const need = "online store for handmade sarees", company = hotLead(need, "Saree Co");
+  await call("/api/leads", { method: "POST", body: { company, need, budget: 250000 } });
+  const ap = await waitFor(() => row("SELECT * FROM approvals WHERE kind='project' AND title LIKE $1 AND status='pending'", [`%${company}%`]), "project approval");
+  await call(`/api/approvals/${ap.id}`, { method: "POST", body: { decision: "approve" } });
+  const p = await waitFor(() => row("SELECT * FROM projects WHERE company=$1 AND stage='Building'", [company]), "build plan");
+  const v1 = await waitFor(() => row("SELECT * FROM sites WHERE project_id=$1 AND status='ready'", [p.id]), "first sandbox version");
+  assert.equal(v1.version, 1);
+  assert.equal((await call("/api/state")).body.projects.find(x => x.id === p.id).site.token, v1.token, "the project card links the sandbox");
+
+  // Anyone with the link can look, without the director key.
+  const meta = await call(`/api/sandbox/${v1.token}`, { key: null });
+  assert.equal(meta.status, 200);
+  assert.equal(meta.body.company, company);
+  assert.ok(meta.body.pages[0] === "index.html" && meta.body.pages.length >= 2);
+  assert.ok(meta.body.guide.summary && meta.body.guide.try.length);
+  const home = await fetch(`${BASE}/sandbox/${v1.token}/`);
+  assert.equal(home.status, 200);
+  assert.match(home.headers.get("content-security-policy"), /^sandbox allow-scripts/);
+  assert.match(home.headers.get("content-security-policy"), /connect-src 'none'/);
+  const html = await home.text();
+  assert.ok(html.includes(company) && html.includes("parent.postMessage"), "page is served with the sandbox helper");
+  assert.equal((await fetch(`${BASE}/sandbox/${v1.token}`, { redirect: "manual" })).status, 301);
+  assert.match((await fetch(`${BASE}/sandbox/${v1.token}/styles.css`)).headers.get("content-type"), /text\/css/);
+  assert.equal((await fetch(`${BASE}/sandbox/${v1.token}/..%2f..%2fpackage.json`)).status, 404);
+  assert.equal((await fetch(`${BASE}/sandbox/${v1.token}/missing.html`)).status, 404);
+  assert.equal((await call("/api/sandbox/not-a-real-token-123456789", { key: null })).status, 404);
+
+  // Only the director can ask for changes; the old version stays.
+  assert.equal((await call(`/api/projects/${p.id}/sites`, { method: "POST", body: { feedback: "bigger logo" }, key: null })).status, 401);
+  const v2 = await call(`/api/projects/${p.id}/sites`, { method: "POST", body: { feedback: "Add a pricing page" } });
+  assert.equal(v2.status, 202); assert.equal(v2.body.version, 2);
+  assert.equal((await call(`/api/projects/${p.id}/sites`, { method: "POST", body: { feedback: "again" } })).status, 409, "one build at a time");
+  await waitFor(() => row("SELECT 1 FROM sites WHERE token=$1 AND status='ready'", [v2.body.token]), "second version");
+  const list = (await call(`/api/projects/${p.id}/sites`)).body;
+  assert.deepEqual(list.map(s => s.version), [2, 1]);
+  assert.equal((await call(`/api/sandbox/${v1.token}`, { key: null })).body.latest, v2.body.token, "old link points to the newer version");
+  assert.match(list[0].guide.changes.join(" "), /pricing page/);
+});

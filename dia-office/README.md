@@ -7,7 +7,8 @@ Inveon Technologies' virtual office, run by **Dia**. AI agents work in HR, Sales
 | Flow | Steps |
 |---|---|
 | **Sales** | Lead (form, cold-call log or CRM webhook) → Kabir captures it → Meera writes the requirement report → Sameer, the sales manager, reviews it → Dia prepares a recommendation and the client message → **you approve** → the client is emailed, a sale order and work order are created |
-| **Engineering** | Neel writes a real build plan (stack, tasks, deploy) → Tara builds → you click *Testing → Deploying → Live* as the real work finishes |
+| **Engineering** | Neel writes a real build plan (stack, tasks, deploy) → Tara builds the website and it runs live in the **sandbox** → you click *Testing → Deploying → Live* as the real work finishes |
+| **Sandbox** | *Open live sandbox* on a project card shows Tara's website running inside the office: pages, Desktop/Tablet/Phone sizes, a plain-English guide to each page, things to try, and what each form would send. Type a change request and Tara builds a new version; old versions stay. The link works without the director key, so you can send it to the client. Sites run isolated (no access to the office, no network calls, nothing sent) |
 | **Marketing** | When a project goes Live, Pooja plans a campaign and Isha drafts a case study and LinkedIn post (drafts for you to review) |
 | **Support** | A ticket (form, help-desk webhook or "ticket from Acme: …" in chat) → Kavya reads company knowledge and drafts a reply → **you approve** → the client is emailed. Bugs are flagged to Tara |
 | **Finance** | When you approve a project, Arjun drafts a 50% advance invoice with 18% GST; at go-live he drafts the balance → **you approve** each before it is emailed → mark it paid when money arrives. The *Profit* tab shows this month's cash in, team billing and AI spend |
@@ -99,6 +100,8 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | POST | `/api/dia/chat`, `/api/dia/selfcheck`, `/api/dia/repair` | director key |
 | POST | `/api/approvals/:id` `{decision:"approve"\|"reject"}` | director key |
 | POST | `/api/projects/:id/stage` `{stage}` | director key |
+| GET/POST | `/api/projects/:id/sites` `{feedback}` (list versions / ask Tara for a new one) | director key |
+| GET | `/api/sandbox/:token`, `/sandbox/:token/` (the running site), `/sandbox.html?s=:token` (viewer) | anyone with the link |
 | POST | `/api/kb`, GET `/api/kb`, GET `/api/kb/search?q=` | director key |
 | GET | `/api/health`, POST `/api/health/retry` | anyone (setup status only, no data) |
 

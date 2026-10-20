@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Live Sandbox · Inveon</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Mukta:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="office.css">
+<style>
+/* Layout: header with the project and version; toolbar (pages, device size); the running site in a device frame on the left, a plain-English guide on the right; stacks on phones */
+body{padding-block:12px 24px}
+.sb{max-width:1440px;margin:0 auto;display:grid;gap:12px}
+.sbtop{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:10px 16px;box-shadow:var(--shadow)}
+.sbtop h1{font-size:1.3rem}
+.sbtop p{margin:0;color:var(--muted);font-size:.85rem}
+.live{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ok);border:1px solid color-mix(in srgb,var(--ok) 40%,var(--line));border-radius:999px;padding:2px 10px}
+.live::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--ok);animation:pulse 1.6s infinite}
+.live.wait{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 40%,var(--line))}.live.wait::before{background:var(--warn)}
+@keyframes pulse{50%{opacity:.3}}
+@media (prefers-reduced-motion:reduce){.live::before{animation:none}}
+.bar2{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.body{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;align-items:start}
+.stagebox{background:var(--floor);border:1px solid var(--line);border-radius:16px;padding:14px;display:grid;justify-items:center;min-height:70vh}
+.device{width:100%;height:72vh;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden;box-shadow:var(--shadow);transition:width .25s}
+.device.tablet{width:min(100%,820px)}
+.device.phone{width:min(100%,390px);height:min(72vh,780px);border:10px solid #1b1f24;border-radius:34px}
+.device iframe{width:100%;height:100%;border:0;display:block;background:#fff}
+.addr{width:100%;display:flex;gap:8px;align-items:center;font-family:var(--f-mono);font-size:.75rem;color:var(--muted);margin-bottom:8px;min-width:0}
+.addr span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.guide{display:grid;gap:12px}
+.guide .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:6px}
+.guide h3{font-size:1rem}
+.guide p,.guide li{font-size:.9rem;margin:0}
+.guide ul{margin:0;padding-left:18px;display:grid;gap:4px}
+.try{list-style:none;padding:0!important}
+.try label{display:flex;gap:8px;align-items:flex-start;cursor:pointer}
+.try input{margin-top:4px;accent-color:var(--ok)}
+.try input:checked + span{text-decoration:line-through;color:var(--muted)}
+.now{border-left:4px solid var(--eng)}
+.formlog{font-family:var(--f-mono);font-size:.75rem;white-space:pre-wrap;color:var(--muted)}
+textarea{width:100%;min-height:90px;font:inherit;padding:8px 10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.msg{font-size:.85rem;margin:0}.msg.err{color:var(--kumkum)}
+.center{display:grid;place-items:center;gap:10px;text-align:center;height:60vh;color:var(--muted)}
+.spin{width:36px;height:36px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--eng);animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(1turn)}}
+select{font:inherit;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:4px 10px}
+@media (max-width:960px){.body{grid-template-columns:1fr}.device{height:62vh}}
+</style>
+</head>
+<body>
+<div class="sb">
+  <header class="sbtop">
+    <div><h1 id="title">Live sandbox</h1><p id="sub">Loading…</p></div>
+    <div class="seg"><span class="live wait" id="live">Loading</span><span id="ver"></span><a class="btn" href="/">← Office</a></div>
+  </header>
+  <div class="bar2" id="bar" hidden>
+    <div class="seg" id="pages" role="tablist" aria-label="Pages"></div>
+    <div class="seg">
+      <div class="seg" role="group" aria-label="Screen size">
+        <button class="btn" data-dev="desktop" aria-pressed="true">🖥 Desktop</button>
+        <button class="btn" data-dev="tablet" aria-pressed="false">Tablet</button>
+        <button class="btn" data-dev="phone" aria-pressed="false">📱 Phone</button>
+      </div>
+      <button class="btn" id="reload" title="Start the page again">↻ Reload</button>
+      <a class="btn" id="full" target="_blank" rel="noopener">Open full screen ↗</a>
+    </div>
+  </div>
+  <div class="body">
+    <div class="stagebox" id="stagebox"><div class="center"><div class="spin"></div><p>Opening the sandbox…</p></div></div>
+    <aside class="guide" id="guide" aria-live="polite"></aside>
+  </div>
+</div>
+<script>
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let KEY="";try{KEY=localStorage.getItem("diaKey")||""}catch{}
+let token=new URLSearchParams(location.search).get("s")||"",M=null,page="index.html",dev="desktop",director=false,versions=[],formLog=[];
+try{dev=localStorage.getItem("sbDevice")||"desktop"}catch{}
+const $=id=>document.getElementById(id);
+async function api(path,opts={}){
+  const r=await fetch(path,{...opts,headers:{"content-type":"application/json",...(KEY?{authorization:"Bearer "+KEY}:{}),...(opts.headers||{})}});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw Object.assign(new Error(j.error||("Request failed ("+r.status+")")),{status:r.status});return j;
+}
+const pageName=f=>M?.guide?.sections?.find(s=>s.page===f)?.name||(f==="index.html"?"Home":f.replace(/\.html$/,"").replace(/-/g," ").replace(/^./,c=>c.toUpperCase()));
+const siteURL=f=>`/sandbox/${encodeURIComponent(token)}/${f==="index.html"?"":encodeURIComponent(f)}`;
+
+async function load(){
+  if(!token){$("stagebox").innerHTML='<div class="center"><p>No sandbox link given. Open a project\'s sandbox from the office.</p></div>';$("live").textContent="No link";return}
+  try{M=await api(`/api/sandbox/${encodeURIComponent(token)}`)}
+  catch(e){$("stagebox").innerHTML=`<div class="center"><p>${esc(e.message)}</p></div>`;$("live").textContent="Not found";return}
+  document.title=`${M.company} · Live Sandbox`;
+  $("title").textContent=M.company;$("sub").textContent=M.need+" · project stage: "+M.stage;
+  if(KEY&&!director){try{versions=await api(`/api/projects/${M.project_id}/sites`);director=true}catch{}}
+  else if(director){versions=await api(`/api/projects/${M.project_id}/sites`).catch(()=>versions)}
+  renderVersion();
+  if(M.status==="building"){$("live").className="live wait";$("live").textContent="Building";$("bar").hidden=true;
+    $("stagebox").innerHTML=`<div class="center"><div class="spin"></div><p><b>Tara is building version ${M.version}.</b><br>${M.feedback?`Your request: “${esc(M.feedback)}”<br>`:""}It opens here by itself when it's ready.</p></div>`;
+    renderGuide();setTimeout(load,2500);return}
+  if(M.status==="failed"){$("live").className="live wait";$("live").textContent="Build failed";$("bar").hidden=true;
+    $("stagebox").innerHTML=`<div class="center"><p><b>Version ${M.version} could not be built.</b><br>${esc(M.error||"")}</p></div>`;renderGuide();return}
+  $("live").className="live";$("live").textContent="Running live";$("bar").hidden=false;
+  if(!M.pages.includes(page))page=M.pages[0]||"index.html";
+  $("stagebox").innerHTML=`<div class="addr"><span>🔒 sandbox</span><span id="addr"></span></div><div class="device" id="device"><iframe id="frame" title="${esc(M.company)} website, running in the sandbox"
+    sandbox="allow-scripts allow-forms allow-modals allow-popups" referrerpolicy="no-referrer"></iframe></div>`;
+  $("full").href=siteURL("index.html");
+  renderPages();setDevice(dev);open_(page);renderGuide();
+}
+function renderVersion(){
+  const v=$("ver");
+  if(director&&versions.length>1){
+    v.innerHTML=`<select id="vsel" aria-label="Version">${versions.map(s=>`<option value="${esc(s.token)}"${s.token===token?" selected":""}>Version ${s.version}${s.status==="ready"?"":" ("+s.status+")"}</option>`).join("")}</select>`;
+    $("vsel").onchange=e=>go(e.target.value);
+  }else v.innerHTML=`<span class="pill">Version ${M.version}</span>${M.latest?` <button class="btn" id="newer">Newer version ready →</button>`:""}`;
+  $("newer")?.addEventListener("click",()=>go(M.latest));
+}
+function go(t){token=t;history.replaceState(null,"",`?s=${encodeURIComponent(t)}`);formLog=[];load()}
+function renderPages(){
+  // Home first, then the order Tara explains them in, then anything else.
+  const order=f=>f==="index.html"?-1:(i=>i<0?999:i)((M.guide?.sections||[]).findIndex(x=>x.page===f));
+  M.pages.sort((a,b)=>order(a)-order(b)||a.localeCompare(b));
+  $("pages").innerHTML=M.pages.map(f=>`<button class="btn" role="tab" data-pg="${esc(f)}" aria-selected="${f===page}" aria-pressed="${f===page}">${esc(pageName(f))}</button>`).join("");
+}
+$("pages").addEventListener("click",e=>{const b=e.target.closest("[data-pg]");if(b)open_(b.dataset.pg)});
+function open_(f){page=f;const fr=$("frame");if(fr)fr.src=siteURL(f);showPage(f)}
+function showPage(f){
+  page=f;$("addr")&&($("addr").textContent=siteURL(f));
+  document.querySelectorAll("[data-pg]").forEach(b=>{const on=b.dataset.pg===f;b.setAttribute("aria-selected",on);b.setAttribute("aria-pressed",on)});
+  const s=M?.guide?.sections?.filter(x=>x.page===f)||[],box=$("nowbox");
+  if(box)box.innerHTML=s.length?s.map(x=>`<p><b>${esc(x.name)}</b>: ${esc(x.what)}</p>`).join(""):`<p>${esc(pageName(f))} page.</p>`;
+}
+function setDevice(d){dev=d;try{localStorage.setItem("sbDevice",d)}catch{};const el=$("device");if(el)el.className="device "+d;
+  document.querySelectorAll("[data-dev]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.dev===d))}
+document.querySelectorAll("[data-dev]").forEach(b=>b.onclick=()=>setDevice(b.dataset.dev));
+$("reload").onclick=()=>open_(page);
+// Messages from the running site (opaque origin, so we check the sender is our frame, not the origin).
+addEventListener("message",e=>{
+  if(e.source!==$("frame")?.contentWindow||!e.data?.sandbox)return;
+  if(typeof e.data.page==="string"&&M?.pages.includes(e.data.page))showPage(e.data.page);
+  if(Array.isArray(e.data.form)){formLog.unshift(`${pageName(page)} → ${e.data.form.map(String).join(", ")||"(empty)"}`);formLog.length=Math.min(formLog.length,5);renderLog()}
+});
+function renderLog(){const b=$("logbox");if(b)b.innerHTML=formLog.length?formLog.map(l=>`<div class="formlog">${esc(l)}</div>`).join(""):'<p style="color:var(--muted)">Nothing sent yet. Fill in a form on the site to see what it would send.</p>'}
+
+function renderGuide(){
+  const g=M.guide||{},list=a=>(a||[]).map(x=>`<li>${esc(x)}</li>`).join("");
+  $("guide").innerHTML=`
+    <div class="card"><h3>What you're looking at</h3><p>${esc(g.summary||`Version ${M.version} of the ${M.company} website.`)}</p>
+      <p style="color:var(--muted);font-size:.8rem">This is the real website running safely inside the office. Nothing here is public, nothing is saved and no emails or payments go out.</p></div>
+    ${M.status==="ready"?`<div class="card now"><h3>On this page</h3><div id="nowbox"></div></div>`:""}
+    ${g.try?.length?`<div class="card"><h3>Try this</h3><ul class="try">${g.try.map((t,i)=>`<li><label><input type="checkbox"><span>${esc(t)}</span></label></li>`).join("")}</ul></div>`:""}
+    ${M.status==="ready"?`<div class="card"><h3>What the forms would send</h3><div id="logbox"></div></div>`:""}
+    ${g.changes?.length?`<div class="card"><h3>New in version ${M.version}</h3><ul>${list(g.changes)}</ul></div>`:""}
+    ${g.not_real_yet?.length?`<div class="card"><h3>Not real yet</h3><p style="color:var(--muted);font-size:.8rem">Shown for look and feel; connected in the real build.</p><ul>${list(g.not_real_yet)}</ul></div>`:""}
+    ${M.stack?.length?`<div class="card"><h3>Real build uses</h3><p>${esc(M.stack.join(" · "))}</p></div>`:""}
+    ${director?`<div class="card"><h3>Ask Tara for a change</h3><p style="color:var(--muted);font-size:.8rem">She builds a new version. This one stays here so you can compare.</p>
+      <textarea id="fb" placeholder="e.g. Make the home page headline about same-day delivery, and add a pricing page"></textarea>
+      <button class="btn primary" id="sendfb" style="justify-self:start">Build new version</button><p class="msg" id="fbmsg"></p></div>`
+      :`<div class="card"><p style="color:var(--muted);font-size:.85rem">Want changes? Tell the Inveon team what you'd like and they'll send you a new version.</p></div>`}`;
+  if(M.status==="ready"){showPage(page);renderLog()}
+  $("sendfb")?.addEventListener("click",async e=>{
+    const t=$("fb").value.trim(),m=$("fbmsg");if(!t){m.textContent="Write what you'd like changed first.";m.className="msg err";return}
+    e.target.disabled=true;m.className="msg";m.textContent="Sending to Tara…";
+    try{const s=await api(`/api/projects/${M.project_id}/sites`,{method:"POST",body:JSON.stringify({feedback:t})});go(s.token)}
+    catch(err){m.textContent=err.message;m.className="msg err";e.target.disabled=false}
+  });
+}
+load();
+</script>
+</body>
+</html>
