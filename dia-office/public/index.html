@@ -19,6 +19,7 @@
       <span class="key"><input id="key" type="password" placeholder="Director key" autocomplete="off" aria-label="Director key (ADMIN_TOKEN from .env)" title="Paste ADMIN_TOKEN from your .env file, then press Unlock"><button class="btn" id="bKey">Unlock</button></span>
       <button class="btn primary" id="bLead">+ New lead</button>
       <button class="btn primary" id="bCand">+ New candidate</button>
+      <button class="btn primary" id="bTicket">+ Support ticket</button>
     </div>
   </section>
 
@@ -39,6 +40,9 @@
           <button type="button" role="tab" data-rec="candidates" aria-selected="false">Candidates</button>
           <button type="button" role="tab" data-rec="projects" aria-selected="false">Projects</button>
           <button type="button" role="tab" data-rec="decisions" aria-selected="false">Decisions</button>
+          <button type="button" role="tab" data-rec="tickets" aria-selected="false">Tickets</button>
+          <button type="button" role="tab" data-rec="invoices" aria-selected="false">Invoices</button>
+          <button type="button" role="tab" data-rec="money" aria-selected="false">Profit</button>
           <button type="button" role="tab" data-rec="spend" aria-selected="false">AI spend</button>
         </div></div>
       <div id="recBody" class="recbody"></div>
@@ -46,7 +50,10 @@
     </div>
     <aside class="rail">
       <section class="card chat" id="chat" aria-label="Talk to Dia">
-        <header><b>Talk to Dia</b><span class="row">
+        <header><button type="button" class="diaFace" id="diaFace" title="Dia" aria-label="Make Dia's picture bigger">
+            <img src="dia.jpg" alt=""><img class="jaw" src="dia.jpg" alt=""><i class="lid l"></i><i class="lid r"></i></button>
+          <div class="diaName"><b>Talk to Dia</b><small id="diaState">Your virtual owner · online</small><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+          <span class="row">
           <button class="btn icon" id="bVoice" type="button" aria-pressed="true" title="Dia speaks her answers">🔊</button>
           <button class="btn icon" id="bChatMin" type="button" aria-expanded="true" title="Hide chat">–</button></span></header>
         <div class="chatbody" id="chatBody">
@@ -55,6 +62,7 @@
             <button type="button" class="chip">What needs my decision?</button>
             <button type="button" class="chip">How is the office doing?</button>
             <button type="button" class="chip">Check yourself and fix problems</button>
+            <button type="button" class="chip">How much profit this month?</button>
           </div>
           <form class="ask" id="askForm">
             <input id="askIn" autocomplete="off" placeholder="Ask Dia anything…" aria-label="Message to Dia">
@@ -79,11 +87,20 @@
         <form class="form" id="candForm">
           <div class="two"><div><label for="cName">Name</label><input id="cName" required></div><div><label for="cEmail">Email</label><input id="cEmail" type="email"></div></div>
           <div class="two"><div><label for="cRole">Role</label><input id="cRole" required placeholder="Frontend Developer"></div>
-            <div><label for="cDept">Department</label><select id="cDept"><option value="eng">Engineering</option><option value="sales">Sales</option><option value="mkt">Marketing</option><option value="hr">HR</option></select></div></div>
+            <div><label for="cDept">Department</label><select id="cDept"><option value="eng">Engineering</option><option value="sales">Sales</option><option value="mkt">Marketing</option><option value="hr">HR</option><option value="support">Support</option><option value="fin">Finance</option></select></div></div>
           <div class="two"><div><label for="cKind">Type</label><select id="cKind"><option value="human">Human</option><option value="ai">AI agent</option></select></div>
             <div><label for="cCost">Monthly cost (₹)</label><input id="cCost" type="number" min="0" value="20000"></div></div>
           <label for="cResume">Resume or notes</label><textarea id="cResume"></textarea>
           <button class="btn primary">Give to Asha</button><p class="msg" id="candMsg"></p>
+        </form>
+      </div>
+      <div class="card" id="ticketCard" hidden>
+        <h3>New support ticket</h3>
+        <form class="form" id="ticketForm">
+          <div class="two"><div><label for="tCustomer">Client</label><input id="tCustomer" required></div><div><label for="tEmail">Email</label><input id="tEmail" type="email"></div></div>
+          <label for="tSubject">Subject</label><input id="tSubject" required placeholder="Login page is slow">
+          <label for="tMessage">What the client wrote</label><textarea id="tMessage" required></textarea>
+          <button class="btn primary">Give to Kavya</button><p class="msg" id="ticketMsg"></p>
         </form>
       </div>
       <div class="card" id="startCard" hidden>
@@ -114,7 +131,8 @@
 <script type="module" src="office3d.js"></script>
 <script>
 const DEPTS={dia:{name:"Dia's Cabin",sub:"Owner · final decisions"},hr:{name:"HR",sub:"Hiring · policies · reporting manager"},
-  sales:{name:"Sales",sub:"Cold calls · CRM · lead analysis"},eng:{name:"Engineering",sub:"Plan · build · deploy · go live"},mkt:{name:"Marketing",sub:"Campaigns · case studies"}};
+  sales:{name:"Sales",sub:"Cold calls · CRM · lead analysis"},eng:{name:"Engineering",sub:"Plan · build · deploy · go live"},mkt:{name:"Marketing",sub:"Campaigns · case studies"},
+  support:{name:"Support",sub:"Client tickets · replies you approve"},fin:{name:"Finance",sub:"GST invoices · payments · profit"}};
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const inr=n=>n?"₹"+Number(n).toLocaleString("en-IN"):"—";
 let S={agents:[],approvals:[],projects:[],activity:[],stats:{},stages:[]},selected="dia";
@@ -189,10 +207,14 @@ function renderApprovals(){
   c.textContent=n;c.dataset.n=n;
   if(!S.director){box.innerHTML='<p class="empty">🔒 Unlock with the director key to see this.</p>';return}
   if(!n){box.innerHTML='<p class="empty">Nothing waiting. Dia will ask here before any hire or new project.</p>';return}
-  const KIND={hire:["Hiring","Hire","Reject"],project:["New project","Approve project","Decline"],code_fix:["Code fix","Approve fix","Discard"]};
+  const KIND={hire:["Hiring","Hire","Reject"],project:["New project","Approve project","Decline"],code_fix:["Code fix","Approve fix","Discard"],ticket_reply:["Support reply","Send reply","I'll answer myself"],invoice:["Invoice","Send invoice","Cancel invoice"]};
   box.innerHTML=S.approvals.map(a=>{const [what,yes,no]=KIND[a.kind]||[a.kind,"Approve","Reject"];
     const detail=a.kind==="code_fix"?`<p>${esc(a.body.explanation)}</p><dl class="kv"><dt>file</dt><dd>${esc(a.body.file)}:${esc(a.body.line)}</dd><dt>error</dt><dd>${esc(a.body.error)}</dd><dt>confidence</dt><dd>${esc(a.body.confidence||"?")}</dd></dl>
       <pre class="rep diff"><span class="del">${esc(a.body.find)}</span>\n<span class="add">${esc(a.body.replace)}</span></pre><p class="note" style="margin:0">Approving opens a pull request for review. The running office is not changed.</p>`
+      :a.kind==="ticket_reply"?`<dl class="kv"><dt>client</dt><dd>${esc(a.body.customer)} ${esc(a.body.email||"(no email)")}</dd><dt>type</dt><dd>${esc(a.body.category)} · ${esc(a.body.priority)} priority</dd></dl>
+      <p class="quote">${esc(a.body.message)}</p><pre class="rep">${esc(a.body.reply)}</pre>${a.body.sources?.length?`<p class="note" style="margin:0">Used: ${esc(a.body.sources.join(", "))}</p>`:""}`
+      :a.kind==="invoice"?`<table class="inv"><tr><td>${esc(a.body.label)}${a.body.so?` · ${esc(a.body.so)}`:""}</td><td>${inr(a.body.subtotal)}</td></tr><tr><td>GST 18%</td><td>${inr(a.body.gst)}</td></tr>
+      <tr class="tot"><td>Total · due ${esc(new Date(a.body.due_date).toLocaleDateString("en-IN"))}</td><td>${inr(a.body.total)}</td></tr></table><p class="note" style="margin:0">To ${esc(a.body.email||"no email on file, will be logged only")}</p>`
       :`${fmtBody(a.body)}${a.body.client_message?`<p><i>Message to client:</i> ${esc(a.body.client_message)}</p>`:""}`;
     return `<div class="appr"><span class="who">Dia asks · ${what}</span><b>${esc(a.title)}</b>${detail}
     <div class="row"><button class="btn yes" data-ap="${a.id}" data-d="approve">${yes}</button>
@@ -355,6 +377,12 @@ document.getElementById("bKey").onclick=async()=>{
   loadKb();
 };
 document.getElementById("bLead").onclick=()=>{const c=document.getElementById("leadCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("lCompany").focus()};
+document.getElementById("bTicket").onclick=()=>{const c=document.getElementById("ticketCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("tCustomer").focus()};
+document.getElementById("ticketForm").onsubmit=async e=>{
+  e.preventDefault();const m=document.getElementById("ticketMsg");m.className="msg";
+  try{await api("/api/tickets",{method:"POST",body:JSON.stringify({customer:v("tCustomer"),email:v("tEmail"),subject:v("tSubject"),message:v("tMessage")})});
+    e.target.reset();m.textContent="Kavya is drafting a reply. It will wait for your approval.";}catch(err){m.textContent=err.message;m.classList.add("err")}
+};
 document.getElementById("bCand").onclick=()=>{const c=document.getElementById("candCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("cName").focus()};
 const v=id=>document.getElementById(id).value.trim();
 document.getElementById("leadForm").onsubmit=async e=>{
@@ -374,7 +402,8 @@ let recTab="leads";try{recTab=localStorage.getItem("diaRec")||"leads"}catch{}
 const recBody=document.getElementById("recBody");
 const when=t=>t?new Date(t).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
 const pill=(t,c)=>`<span class="pill" style="--c:var(--${c})">${esc(t)}</span>`;
-const tempCol={hot:"kumkum",warm:"marigold",cold:"eng"},statCol={pending:"marigold",approved:"ok",rejected:"kumkum",hired:"ok",passed:"ok",failed:"kumkum",won:"ok",declined:"kumkum"};
+const tempCol={hot:"kumkum",warm:"marigold",cold:"eng"},statCol={pending:"marigold",approved:"ok",rejected:"kumkum",hired:"ok",passed:"ok",failed:"kumkum",won:"ok",declined:"kumkum",
+  new:"eng",awaiting_approval:"marigold",answered:"ok",needs_you:"kumkum",closed:"dia",draft:"marigold",sent:"eng",paid:"ok",cancelled:"kumkum"};
 function table(cols,rows,detail){
   if(!rows.length)return'<p class="empty">Nothing here yet.</p>';
   return `<div class="tblwrap"><table><thead><tr>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${rows.map((r,i)=>
@@ -394,17 +423,36 @@ const REC={
       <p><b>${esc(r.marketing.content?.title||"")}</b></p><p>${esc(r.marketing.content?.case_study||"")}</p><p><i>LinkedIn:</i> ${esc(r.marketing.content?.linkedin_post||"")}</p>
       ${r.marketing.review?"":`<div class="row"><button type="button" class="btn yes" data-mk="${r.id}" data-d="approve">Approve for publishing</button><button type="button" class="btn no" data-mk="${r.id}" data-d="reject">Ask Isha to rewrite</button></div>`}`:""}`||'<p class="empty">No plan yet.</p>')},
   decisions:{path:"/api/records/decisions",render:rows=>table([["Decision",r=>esc(r.title)],["Kind",r=>esc(r.kind.replace("_"," "))],["Result",r=>pill(r.status,statCol[r.status]||"eng")],["Asked",r=>when(r.created_at)],["Decided",r=>when(r.decided_at)]],rows)},
+  tickets:{path:"/api/records/tickets",render:rows=>table([["Client",r=>`<b>${esc(r.customer)}</b><br><small>${esc(r.email||"")}</small>`],["Subject",r=>esc(r.subject)],
+    ["Type",r=>esc(r.category||"…")],["Priority",r=>r.priority?pill(r.priority,r.priority==="high"?"kumkum":"eng"):"…"],["Status",r=>pill(r.status.replace(/_/g," "),statCol[r.status]||"eng")],["Received",r=>when(r.created_at)]],
+    rows,r=>`<p class="quote">${esc(r.message)}</p>${r.reply?`<h4>Kavya's reply</h4><pre class="rep">${esc(r.reply.reply)}</pre>`:""}
+      ${r.status!=="closed"?`<div class="row"><button type="button" class="btn" data-close="${r.id}">Close ticket</button></div>`:""}`)},
+  invoices:{path:"/api/records/invoices",render:rows=>table([["Invoice",r=>`<b class="mono">${esc(r.number)}</b>`],["Client",r=>esc(r.company)],["For",r=>esc(r.label)],
+    ["Amount",r=>inr(r.subtotal)],["GST",r=>inr(r.gst)],["Total",r=>`<b>${inr(r.total)}</b>`],
+    ["Status",r=>pill(r.status,statCol[r.status]||"eng")+(r.status==="sent"&&new Date(r.due_date)<new Date()?" "+pill("overdue","kumkum"):"")],
+    ["",r=>r.status==="sent"?`<button type="button" class="btn yes" data-paid="${r.id}">Mark paid</button>`:r.paid_at?`<small>paid ${when(r.paid_at)}</small>`:""]],rows)+
+    '<p class="note">Arjun raises a 50% advance when you approve a project and the balance when it goes live. You approve each invoice before it is emailed.</p>'},
+  money:{path:"/api/records/finance",render:f=>`<div class="pnl"><h4>${esc(f.month)}</h4><table class="inv">
+    <tr><td>Received from clients (before GST)</td><td>${inr(f.received)}</td></tr>
+    <tr><td>Team billing (all agents)</td><td>− ${inr(f.payroll)}</td></tr>
+    <tr><td>AI spend (at ₹${f.usd_inr}/$)</td><td>− ${inr(f.ai_spend)}</td></tr>
+    <tr class="tot"><td>${f.profit<0?"Loss":"Profit"} this month</td><td style="color:var(--${f.profit<0?"kumkum":"ok"})">${f.profit<0?"− ":""}${inr(Math.abs(f.profit))}</td></tr></table>
+    <dl class="kv"><dt>Invoiced this month</dt><dd>${inr(f.invoiced)}</dd><dt>Still to collect</dt><dd>${inr(f.outstanding)}${f.overdue?` (${inr(f.overdue)} overdue)`:""}</dd><dt>GST collected</dt><dd>${inr(f.gst_collected)}</dd></dl>
+    <p class="note">A simple cash view for running the office, not a replacement for your accountant.</p></div>`},
   spend:{path:"/api/records/spend",render:rows=>table([["Agent",r=>esc(r.agent||"—")],["Model",r=>`<span class="mono">${esc(r.model)}</span>`],["Calls",r=>r.calls],["Tokens in / out",r=>`${r.input_tokens.toLocaleString("en-IN")} / ${r.output_tokens.toLocaleString("en-IN")}`],["Cost (USD)",r=>"$"+r.cost_usd.toFixed(4)]],rows)+'<p class="note">This month only. Mock mode costs nothing.</p>'}
 };
 async function loadRecords(){
   document.querySelectorAll("[data-rec]").forEach(b=>b.setAttribute("aria-selected",b.dataset.rec===recTab));
-  if(!unlocked){recBody.innerHTML='<p class="empty">🔒 Unlock with the director key to see leads, candidates, projects, decisions and AI spend.</p>';return}
+  if(!unlocked){recBody.innerHTML='<p class="empty">🔒 Unlock with the director key to see leads, candidates, projects, tickets, invoices, profit and AI spend.</p>';return}
+  if(!REC[recTab])recTab="leads";
   try{recBody.innerHTML=REC[recTab].render(await api(REC[recTab].path))}catch(e){recBody.innerHTML=`<p class="empty">${esc(e.message)}</p>`}
 }
 document.querySelector("#records .tabs").onclick=e=>{const b=e.target.closest("[data-rec]");if(!b)return;recTab=b.dataset.rec;try{localStorage.setItem("diaRec",recTab)}catch{};loadRecords()};
 recBody.onclick=async e=>{
   const c=e.target.closest("[data-copy]");
   if(c){try{await navigator.clipboard.writeText(c.dataset.copy);c.textContent="Copied"}catch{c.outerHTML=`<input class="mono" readonly value="${esc(c.dataset.copy)}" onfocus="this.select()">`}return}
+  const pd=e.target.closest("[data-paid]"),cl=e.target.closest("[data-close]");
+  if(pd||cl){const b=pd||cl;b.disabled=true;try{await api(pd?`/api/invoices/${pd.dataset.paid}/paid`:`/api/tickets/${cl.dataset.close}/close`,{method:"POST",body:"{}"});loadRecords()}catch(err){b.textContent=err.message}return}
   const m=e.target.closest("[data-mk]");
   if(m){m.disabled=true;try{await api(`/api/projects/${m.dataset.mk}/marketing`,{method:"POST",body:JSON.stringify({decision:m.dataset.d})});loadRecords()}catch(err){m.textContent=err.message}return}
   const tr=e.target.closest("tr.click");if(tr){const d=tr.nextElementSibling;d.hidden=!d.hidden;tr.classList.toggle("open",!d.hidden)}
@@ -434,8 +482,11 @@ function pickVoice(){
     ||vs.find(v=>/^en/i.test(v.lang)&&/female|samantha|zira|aria|jenny|google uk english female/i.test(v.name))||vs.find(v=>/^en/i.test(v.lang));
 }
 let talkT;
+const chatEl=document.getElementById("chat"),diaState=document.getElementById("diaState");
+function talking(on){chatEl.classList.toggle("speaking",on);diaState.textContent=on?"Speaking…":"Your virtual owner · online";window.Office3D?.talk(on)}
+document.getElementById("diaFace").onclick=()=>chatEl.classList.toggle("bigface");
 function speak(text){
-  const O=window.Office3D;clearTimeout(talkT);
+  const O={talk:talking};clearTimeout(talkT);
   bubble("dia",text.length>90?text.slice(0,88)+"…":text,false);
   const done=()=>{O?.talk(false);talkT=setTimeout(()=>bubble("dia","",false),4000)};
   if(voiceOn&&window.speechSynthesis){
@@ -446,16 +497,19 @@ function speak(text){
     speechSynthesis.speak(u);
   }else{O?.talk(true);talkT=setTimeout(done,Math.min(9000,300*text.split(/\s+/).length))}
 }
-function addMsg(role,text,action){
+function addMsg(role,text,action,more){
   const el=document.createElement("div");el.className="m "+role;
   el.innerHTML=`<p>${esc(text)}</p>`;
-  if(action){const b=document.createElement("button");b.type="button";b.className="btn act";b.textContent=action.label;
-    b.onclick=async()=>{b.disabled=true;try{const r=await api(action.path,{method:action.method,body:JSON.stringify(action.body)});
-      b.textContent="Done ✓";
+  const list=more?.length?more:action?[action]:[],runs=[];
+  for(const act of list){const b=document.createElement("button");b.type="button";b.className="btn act";b.textContent=act.label;
+    const run=async()=>{if(b.disabled)return;b.disabled=true;try{const r=await api(act.path,{method:act.method,body:JSON.stringify(act.body)});
+      b.textContent="Done ✓ "+act.label;
       if(r&&r.findings){const t=selfCheckText(r);addMsg("dia",t,r.can_repair?{label:"Draft a code fix for my latest error",method:"POST",path:"/api/dia/repair",body:{}}:null);speak(t)}
       if(r&&r.kind==="code_fix"){const t="I've drafted a fix. It's in your decisions box with the exact change. Nothing changes until you approve it.";addMsg("dia",t);speak(t)}}
       catch(err){b.textContent=err.message;b.disabled=false}};
-    el.appendChild(b)}
+    b.onclick=run;runs.push(run);el.appendChild(b)}
+  if(runs.length>1){const all=document.createElement("button");all.type="button";all.className="btn primary act";all.textContent=`Do all ${runs.length}`;
+    all.onclick=async()=>{all.disabled=true;for(const r of runs)await r();all.textContent="All handed out ✓"};el.appendChild(all)}
   msgs.appendChild(el);msgs.scrollTop=msgs.scrollHeight;
 }
 function selfCheckText(r){
@@ -469,7 +523,7 @@ async function sendChat(text){
   if(!unlocked){const t="Please unlock with your director key first. It's the box at the top right. Then I can tell you everything about the office.";addMsg("dia",t);speak(t);askForKey();return}
   const typing=document.createElement("div");typing.className="m dia typing";typing.innerHTML="<p><i></i><i></i><i></i></p>";msgs.appendChild(typing);msgs.scrollTop=msgs.scrollHeight;
   try{const r=await api("/api/dia/chat",{method:"POST",body:JSON.stringify({message:text,history})});
-    typing.remove();history.push({role:"me",text},{role:"dia",text:r.reply});addMsg("dia",r.reply,r.action);speak(r.reply)}
+    typing.remove();history.push({role:"me",text},{role:"dia",text:r.reply});addMsg("dia",r.reply,r.action,r.actions);speak(r.reply)}
   catch(err){typing.remove();addMsg("dia",err.message)}
 }
 document.getElementById("askForm").onsubmit=e=>{e.preventDefault();sendChat(askIn.value)};
@@ -481,7 +535,7 @@ if(SR){const bMic=document.getElementById("bMic");bMic.hidden=false;
 addMsg("dia","Namaskar! I'm Dia. Ask me what needs your decision, how the office is doing, or tell me to check and fix myself.");
 function greet(){const t="Namaskar! I'm Dia, and the office is ready. Ask me anything.";window.Office3D?.wave();speak(t)}
 
-document.getElementById("diaMini").innerHTML=diaSVG();
+document.getElementById("diaMini").innerHTML='<img src="dia.jpg" alt="Dia">';
 let wsOn=false;
 async function start(){
   try{await health();if(!H.db.ok){showSetup();return}

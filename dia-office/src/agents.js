@@ -11,8 +11,12 @@ export const AGENTS = [
   { id: "tara", name: "Tara", role: "Full-stack Developer", dept: "eng", cost: 28000, look: { skin: 0, style: "long", shirt: "#3a7d8c" } },
   { id: "om", name: "Om", role: "DevOps · AWS", dept: "eng", cost: 27000, look: { skin: 3, style: "curly", shirt: "#4a4f5a", headset: 1 } },
   { id: "pooja", name: "Pooja", role: "Digital Marketing", dept: "mkt", cost: 17000, look: { skin: 5, style: "bun", shirt: "#7b4bb7", bindi: 1 } },
-  { id: "isha", name: "Isha", role: "Content & Social", dept: "mkt", cost: 15000, look: { skin: 1, style: "long", shirt: "#b0478a" } }
+  { id: "isha", name: "Isha", role: "Content & Social", dept: "mkt", cost: 15000, look: { skin: 1, style: "long", shirt: "#b0478a" } },
+  { id: "kavya", name: "Kavya", role: "Client Support", dept: "support", cost: 16000, look: { skin: 2, style: "long", shirt: "#0f8a84", headset: 1, bindi: 1 } },
+  { id: "arjun", name: "Arjun", role: "Accounts & Billing", dept: "fin", cost: 22000, look: { skin: 4, style: "short", shirt: "#3f5f3a", glasses: 1 } }
 ];
+
+export const DEPTS = ["hr", "sales", "eng", "mkt", "support", "fin"];
 
 export const COMPANY = () =>
   `You work at ${process.env.COMPANY_NAME || "Inveon Technologies"}, a software company in Pune, India that builds web apps, ` +

@@ -9,6 +9,9 @@ Inveon Technologies' virtual office, run by **Dia**. AI agents work in HR, Sales
 | **Sales** | Lead (form, cold-call log or CRM webhook) → Kabir captures it → Meera writes the requirement report → Sameer, the sales manager, reviews it → Dia prepares a recommendation and the client message → **you approve** → the client is emailed, a sale order and work order are created |
 | **Engineering** | Neel writes a real build plan (stack, tasks, deploy) → Tara builds → you click *Testing → Deploying → Live* as the real work finishes |
 | **Marketing** | When a project goes Live, Pooja plans a campaign and Isha drafts a case study and LinkedIn post (drafts for you to review) |
+| **Support** | A ticket (form, help-desk webhook or "ticket from Acme: …" in chat) → Kavya reads company knowledge and drafts a reply → **you approve** → the client is emailed. Bugs are flagged to Tara |
+| **Finance** | When you approve a project, Arjun drafts a 50% advance invoice with 18% GST; at go-live he drafts the balance → **you approve** each before it is emailed → mark it paid when money arrives. The *Profit* tab shows this month's cash in, team billing and AI spend |
+| **Goals** | Give Dia several jobs in one message ("add lead X needs Y; ticket from Z: … then check yourself") and she lines up one button per team, plus *Do all* |
 | **HR** | Candidate → Asha writes the interview and task → humans answer on a link, AI-agent candidates are interviewed automatically → Asha scores the answers → Vikram, the reporting manager, reviews → **you approve** → Rohan emails the offer and company policies → the new member appears in the office and billing starts |
 
 Every AI call is recorded with its token count and cost. **AI spend** shows at the top, and AI pauses when it reaches `MONTHLY_AI_BUDGET_USD`.
@@ -77,6 +80,10 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | POST | `/api/leads`, `/api/webhooks/lead` | director key |
 | POST | `/api/candidates` | director key |
 | GET/POST | `/api/interview/:token` | the candidate (secret link) |
+| POST | `/api/tickets`, `/api/webhooks/ticket` `{customer, email, subject, message}`, `/api/tickets/:id/close` | director key |
+| POST | `/api/invoices/:id/paid` | director key |
+| GET | `/api/records/{leads,candidates,projects,decisions,spend,tickets,invoices,finance}` | director key |
+| POST | `/api/dia/chat`, `/api/dia/selfcheck`, `/api/dia/repair` | director key |
 | POST | `/api/approvals/:id` `{decision:"approve"\|"reject"}` | director key |
 | POST | `/api/projects/:id/stage` `{stage}` | director key |
 | POST | `/api/kb`, GET `/api/kb`, GET `/api/kb/search?q=` | director key |
@@ -84,7 +91,7 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 
 ## Tests
 
-`npm test` starts the office in mock mode against a throwaway database and runs every flow end to end (lead to promoted project, AI hire, interview link, knowledge base, chat, self-check). It **wipes** the database in `TEST_DATABASE_URL` (default `postgres://dia:dia@localhost:5432/dia_test`), so point it at an empty test database only. GitHub Actions runs the same tests on every pull request.
+`npm test` starts the office in mock mode against a throwaway database and runs every flow end to end (lead to promoted project, AI hire, interview link, knowledge base, chat goals, self-check, support tickets, GST invoices). It **wipes** the database in `TEST_DATABASE_URL` (default `postgres://dia:dia@localhost:5432/dia_test`), so point it at an empty test database only. GitHub Actions runs the same tests on every pull request.
 
 ## Database changes
 

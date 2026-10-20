@@ -15,6 +15,9 @@ import { setStage, STAGES } from "./workflows/engineering.js";
 import { chat } from "./assistant.js";
 import { selfCheck, scheduleSelfCheck } from "./selfcheck.js";
 import { proposeFix } from "./repair.js";
+import { DEPTS } from "./agents.js";
+import { newTicket, closeTicket } from "./workflows/support.js";
+import { markPaid, profitAndLoss } from "./workflows/finance.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -104,10 +107,12 @@ app.get("/api/state", wrap(async (req, res) => {
       (SELECT count(*) FROM projects)::int AS won,
       (SELECT count(*) FROM projects WHERE stage IN ('Live','Promoted'))::int AS live,
       (SELECT COALESCE(sum(value),0) FROM projects)::bigint AS revenue,
-      (SELECT COALESCE(sum(monthly_cost),0) FROM agents)::bigint AS payroll`)
+      (SELECT COALESCE(sum(monthly_cost),0) FROM agents)::bigint AS payroll,
+      (SELECT count(*) FROM tickets WHERE status NOT IN ('answered','closed'))::int AS open_tickets,
+      (SELECT COALESCE(sum(subtotal),0) FROM invoices WHERE status='paid')::bigint AS received`)
   ]);
-  const money = director ? { revenue: stats.revenue, payroll: stats.payroll, ai_spend_usd: await monthSpendUSD(),
-    ai_budget_usd: parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0") } : { revenue: null, payroll: null, ai_spend_usd: null, ai_budget_usd: null };
+  const money = director ? { revenue: stats.revenue, payroll: stats.payroll, received: stats.received, ai_spend_usd: await monthSpendUSD(),
+    ai_budget_usd: parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0") } : { revenue: null, payroll: null, received: null, ai_spend_usd: null, ai_budget_usd: null };
   res.json({ director, agents: director ? agents.rows : agents.rows.map(({ monthly_cost, ...a }) => a),
     approvals: approvals.rows, projects: projects.rows, activity: activity.rows,
     stats: { ...stats, ...money, provider: process.env.LLM_PROVIDER || "mock" }, stages: STAGES });
@@ -129,7 +134,7 @@ app.post("/api/webhooks/lead", admin, wrap(async (req, res) => {
 // ---- HR ----
 app.post("/api/candidates", admin, wrap(async (req, res) => {
   need(req.body, ["name", "role", "dept"]);
-  if (!["hr", "sales", "eng", "mkt"].includes(req.body.dept)) throw Object.assign(new Error("dept must be hr, sales, eng or mkt"), { status: 400 });
+  if (!DEPTS.includes(req.body.dept)) throw Object.assign(new Error(`dept must be one of: ${DEPTS.join(", ")}`), { status: 400 });
   const c = await newCandidate(req.body);
   res.status(202).json({ id: c.id, interview_link: `${process.env.PUBLIC_URL}/interview.html?t=${c.token}` });
 }));
@@ -144,6 +149,22 @@ app.post("/api/interview/:token", wrap(async (req, res) => {
   await submitAnswers(req.params.token, req.body.answers.map(a => String(a).slice(0, 4000)), String(req.body.task_answer || "").slice(0, 8000));
   res.json({ ok: true });
 }));
+
+// ---- Support ----
+app.post("/api/tickets", admin, wrap(async (req, res) => {
+  need(req.body, ["customer", "subject", "message"]);
+  const t = await newTicket(req.body);
+  res.status(202).json({ id: t.id });
+}));
+// Hook for a help-desk form or mailbox forwarder: same body, same token.
+app.post("/api/webhooks/ticket", admin, wrap(async (req, res) => {
+  need(req.body, ["customer", "subject", "message"]);
+  res.status(202).json({ id: (await newTicket(req.body)).id });
+}));
+app.post("/api/tickets/:id/close", admin, wrap(async (req, res) => res.json(await closeTicket(parseInt(req.params.id, 10)))));
+
+// ---- Finance ----
+app.post("/api/invoices/:id/paid", admin, wrap(async (req, res) => res.json(await markPaid(parseInt(req.params.id, 10)))));
 
 // ---- Decisions & projects ----
 app.post("/api/approvals/:id", admin, wrap(async (req, res) => {
@@ -169,6 +190,11 @@ app.get("/api/records/spend", admin, wrap(async (_req, res) => res.json((await q
      sum(u.output_tokens)::int AS output_tokens, round(sum(u.cost_usd)::numeric, 4)::float AS cost_usd
    FROM llm_usage u LEFT JOIN agents g ON g.id = u.agent_id
    WHERE u.created_at >= date_trunc('month', now()) GROUP BY 1, 2 ORDER BY cost_usd DESC, calls DESC`)).rows)));
+app.get("/api/records/tickets", admin, wrap(async (_req, res) => res.json((await q(
+  "SELECT id, customer, email, subject, message, category, priority, reply, status, created_at, answered_at FROM tickets ORDER BY created_at DESC LIMIT 200")).rows)));
+app.get("/api/records/invoices", admin, wrap(async (_req, res) => res.json((await q(
+  "SELECT id, number, company, email, label, subtotal, gst, total, status, due_date, created_at, sent_at, paid_at FROM invoices ORDER BY id DESC LIMIT 200")).rows)));
+app.get("/api/records/finance", admin, wrap(async (_req, res) => res.json(await profitAndLoss())));
 // Marketing drafts are only drafts until the director approves them for publishing.
 app.post("/api/projects/:id/marketing", admin, wrap(async (req, res) => {
   const ok = req.body?.decision === "approve";

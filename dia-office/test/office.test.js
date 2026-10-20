@@ -18,7 +18,7 @@ function seeded(key) {
   for (const ch of String(key)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   return () => { h = (h + 0x6d2b79f5) | 0; let t = Math.imul(h ^ (h >>> 15), 1 | h); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-const hotLead = need => { for (let i = 0; ; i++) if (50 + Math.floor(seeded(`Hot Co ${i}` + need)() * 46) >= 70) return `Hot Co ${i}`; };
+const hotLead = (need, prefix = "Hot Co") => { for (let i = 0; ; i++) if (50 + Math.floor(seeded(`${prefix} ${i}` + need)() * 46) >= 70) return `${prefix} ${i}`; };
 const passingCandidate = role => { for (let i = 0; ; i++) { const r = seeded(`Agent ${i}` + role), a = 55 + Math.floor(r() * 40), b = 55 + Math.floor(r() * 40); if (a >= 65 && b >= 65) return `Agent ${i}`; } };
 
 async function call(path, { method = "GET", body, key = KEY } = {}) {
@@ -171,4 +171,52 @@ test("marketing drafts wait for the director's approval", async () => {
   assert.equal((await call(`/api/projects/${p.id}/marketing`, { method: "POST", body: { decision: "approve" } })).status, 200);
   const after = (await call("/api/records/projects")).body.find(x => x.id === p.id);
   assert.equal(after.marketing.review.status, "approved");
+});
+
+test("a support ticket gets a drafted reply that waits for approval", async () => {
+  const r = await call("/api/tickets", { method: "POST", body: { customer: "Pune Events", subject: "Login is down", message: "Urgent: users cannot log in since morning." } });
+  assert.equal(r.status, 202);
+  const ap = await waitFor(() => row("SELECT * FROM approvals WHERE kind='ticket_reply' AND ref_id=$1", [r.body.id]), "reply approval");
+  assert.equal(ap.body.category, "bug"); assert.equal(ap.body.priority, "high");
+  assert.equal((await row("SELECT status FROM tickets WHERE id=$1", [r.body.id])).status, "awaiting_approval");
+  await call(`/api/approvals/${ap.id}`, { method: "POST", body: { decision: "approve" } });
+  await waitFor(() => row("SELECT * FROM tickets WHERE id=$1 AND status='answered'", [r.body.id]), "ticket answered");
+  assert.equal((await call(`/api/tickets/${r.body.id}/close`, { method: "POST" })).status, 200);
+  assert.equal((await call("/api/tickets", { method: "POST", key: null, body: { customer: "x", subject: "y", message: "z" } })).status, 401);
+});
+
+test("an approved project gets a GST advance invoice, then balance at go-live", async () => {
+  const need = "inventory app", company = hotLead(need, "Billing Co");
+  await call("/api/leads", { method: "POST", body: { company, need, budget: 200000, email: "owner@example.com" } });
+  const ap = await waitFor(() => row("SELECT * FROM approvals WHERE kind='project' AND title LIKE $1", [`%${company}%`]), "project approval");
+  await call(`/api/approvals/${ap.id}`, { method: "POST", body: { decision: "approve" } });
+  const ia = await waitFor(() => row("SELECT * FROM approvals WHERE kind='invoice' AND title LIKE $1", [`%${company}%`]), "invoice approval");
+  assert.equal(ia.body.subtotal, 100000); assert.equal(ia.body.gst, 18000); assert.equal(ia.body.total, 118000);
+  assert.match(ia.body.number, /^INV-\d+$/);
+  assert.equal((await call(`/api/invoices/${ia.ref_id}/paid`, { method: "POST" })).status, 409, "a draft can't be paid");
+  await call(`/api/approvals/${ia.id}`, { method: "POST", body: { decision: "approve" } });
+  await waitFor(() => row("SELECT * FROM invoices WHERE id=$1 AND status='sent'", [ia.ref_id]), "invoice sent");
+  assert.equal((await call(`/api/invoices/${ia.ref_id}/paid`, { method: "POST" })).status, 200);
+  const pnl = (await call("/api/records/finance")).body;
+  assert.ok(pnl.received >= 100000 && typeof pnl.profit === "number");
+  const p = await waitFor(() => row("SELECT * FROM projects WHERE company=$1 AND stage='Building'", [company]), "build");
+  await call(`/api/projects/${p.id}/stage`, { method: "POST", body: { stage: "Live" } });
+  const bal = await waitFor(() => row("SELECT * FROM invoices WHERE project_id=$1 AND label='Balance on go-live'", [p.id]), "balance invoice");
+  assert.equal(Number(bal.subtotal), 100000);
+  for (const r of ["tickets", "invoices", "finance"]) assert.equal((await call(`/api/records/${r}`, { key: null })).status, 401, r);
+});
+
+test("Dia splits a goal into jobs for different teams", async () => {
+  const r = (await call("/api/dia/chat", { method: "POST", body: { message: "add lead Zen Foods needs a delivery app; ticket from Acme: the app is slow then check yourself" } })).body;
+  assert.deepEqual(r.actions.map(a => a.path), ["/api/leads", "/api/tickets", "/api/dia/selfcheck"]);
+  const money = (await call("/api/dia/chat", { method: "POST", body: { message: "How much profit this month?" } })).body;
+  assert.match(money.reply, /profit|loss/i);
+});
+
+test("Support and Finance have desks, and new hires can join them", async () => {
+  const st = (await call("/api/state")).body;
+  assert.ok(st.agents.some(a => a.id === "kavya" && a.dept === "support"));
+  assert.ok(st.agents.some(a => a.id === "arjun" && a.dept === "fin"));
+  assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Riya", role: "Accountant", dept: "fin" } })).status, 202);
+  assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Riya", role: "Accountant", dept: "space" } })).status, 400);
 });

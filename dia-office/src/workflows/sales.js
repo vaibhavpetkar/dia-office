@@ -6,6 +6,7 @@ import { COMPANY } from "../agents.js";
 import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { requestApproval, onDecision } from "./approvals.js";
 import { startEngineering } from "./engineering.js";
+import { draftInvoice } from "./finance.js";
 import { sendMail } from "../mail.js";
 
 const inr = n => (n ? "₹" + Number(n).toLocaleString("en-IN") : "unknown");
@@ -107,6 +108,8 @@ onDecision("project", async (a, approved) => {
   await log("sameer", `created sale order ${so} and work order ${wo} for ${lead.company} (${inr(a.body.price)}).`);
   await idle("sameer");
   refresh("projects");
+  await handoff("sameer", "arjun", so);
+  draftInvoice(p.id, "advance").catch(e => problem(`could not draft the advance invoice for ${lead.company}`, e));
   await handoff("sameer", "neel", wo);
   await startEngineering(p.id);
 });

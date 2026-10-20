@@ -5,6 +5,7 @@ import { ask } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
 import { status, idle, log, handoff, refresh, problem } from "../events.js";
+import { draftInvoice } from "./finance.js";
 
 export const STAGES = ["Won", "Work order", "Planning", "Building", "Testing", "Deploying", "Live", "Promoted"];
 
@@ -46,6 +47,7 @@ export async function setStage(projectId, stage) {
     await idle("om"); await log("om", `${p.company} is live.`);
     await handoff("om", "pooja", "Go-live");
     promote(p).catch(e => problem(`marketing step failed for ${p.company}`, e));
+    draftInvoice(p.id, "balance").catch(e => problem(`could not draft the balance invoice for ${p.company}`, e));
   }
   return p;
 }

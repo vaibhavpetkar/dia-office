@@ -3,19 +3,19 @@
 :root{
   --bg:#eef2ee; --surface:#ffffff; --floor:#e2e9e3; --ink:#1b2a26; --muted:#5a6a64; --line:#cfd9d2;
   --peacock:#0f6e6a; --marigold:#d9930f; --kumkum:#c2264b; --ok:#2f8a4c; --warn:#b86e08;
-  --hr:#c2264b; --sales:#d9930f; --eng:#2b6cb0; --mkt:#7b4bb7; --dia:#0f6e6a;
+  --hr:#c2264b; --sales:#d9930f; --eng:#2b6cb0; --mkt:#7b4bb7; --support:#0d8f8a; --fin:#3f7a2e; --dia:#0f6e6a;
   --shadow:0 1px 2px rgba(20,40,35,.08),0 6px 18px rgba(20,40,35,.06);
   --f-display:"Baloo 2","Mukta",system-ui,sans-serif; --f-body:"Mukta",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,monospace;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0f1715; --surface:#16211e; --floor:#1a2723; --ink:#e6eeea; --muted:#9bada6; --line:#2a3a35;
   --peacock:#3fb3aa; --marigold:#f0b840; --kumkum:#f0607f; --ok:#5cc47b; --warn:#f0a43a;
-  --hr:#f0607f; --sales:#f0b840; --eng:#6aa8f0; --mkt:#b48cf0; --dia:#3fb3aa;
+  --hr:#f0607f; --sales:#f0b840; --eng:#6aa8f0; --mkt:#b48cf0; --support:#45c4bd; --fin:#86c46a; --dia:#3fb3aa;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25); color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f1715; --surface:#16211e; --floor:#1a2723; --ink:#e6eeea; --muted:#9bada6; --line:#2a3a35;
   --peacock:#3fb3aa; --marigold:#f0b840; --kumkum:#f0607f; --ok:#5cc47b; --warn:#f0a43a;
-  --hr:#f0607f; --sales:#f0b840; --eng:#6aa8f0; --mkt:#b48cf0; --dia:#3fb3aa;
+  --hr:#f0607f; --sales:#f0b840; --eng:#6aa8f0; --mkt:#b48cf0; --support:#45c4bd; --fin:#86c46a; --dia:#3fb3aa;
   --shadow:0 1px 2px rgba(0,0,0,.4),0 6px 18px rgba(0,0,0,.25); color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -53,7 +53,7 @@ button:focus-visible,.agent:focus-visible,summary:focus-visible{outline:2px soli
 .room h2{font-size:1.05rem;font-weight:700;color:var(--c)}
 .room header span{font-size:.75rem;color:var(--muted)}
 .desks{display:flex;flex-wrap:wrap;gap:10px 8px;margin-top:34px}
-.room[data-d="hr"]{--c:var(--hr)} .room[data-d="sales"]{--c:var(--sales)} .room[data-d="eng"]{--c:var(--eng)} .room[data-d="mkt"]{--c:var(--mkt)}
+.room[data-d="hr"]{--c:var(--hr)} .room[data-d="sales"]{--c:var(--sales)} .room[data-d="eng"]{--c:var(--eng)} .room[data-d="mkt"]{--c:var(--mkt)} .room[data-d="support"]{--c:var(--support)} .room[data-d="fin"]{--c:var(--fin)}
 
 .agent{position:relative;width:96px;display:grid;justify-items:center;gap:2px;border-radius:12px;padding:4px 2px;border:1px solid transparent;background:none;color:inherit;text-align:center}
 .agent:hover,.agent.sel{border-color:color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 8%,transparent)}
@@ -250,3 +250,42 @@ pre.diff .add{display:block;color:var(--ok)}
 .records .yes{background:var(--ok);border-color:var(--ok);color:var(--surface)}
 .records .no{color:var(--kumkum)}
 .mono{font-family:var(--f-mono);font-size:.74rem}
+
+/* Dia's portrait: blinks, breathes, and moves her mouth while she speaks */
+.chat header{gap:10px;justify-content:flex-start}
+.chat header > .row{margin-left:auto}
+.diaName{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+.diaName small{color:var(--muted);font-size:.74rem}
+.diaFace{position:relative;flex:none;width:58px;height:58px;padding:0;border:2px solid var(--peacock);border-radius:50%;overflow:hidden;cursor:zoom-in;background:#2a1a12;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--peacock) 18%,transparent);transition:width .3s,height .3s,border-radius .3s}
+.diaFace img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;animation:breathe 5s ease-in-out infinite;transform-origin:50% 80%}
+/* lower lip to chin, nudged down while talking so the mouth opens a little */
+.diaFace .jaw{clip-path:polygon(36% 61.5%,64% 61.5%,66% 70%,58% 74%,42% 74%,34% 70%);animation:breathe 5s ease-in-out infinite}
+.chat.speaking .diaFace .jaw{animation:jaw .19s ease-in-out infinite alternate}
+.diaFace .lid{position:absolute;width:11%;height:5.5%;top:37.6%;border-radius:50% 50% 45% 45%;transform:scaleY(0);transform-origin:50% 0;
+  background:linear-gradient(#93664a,#8a5c42 70%,#3a2016);animation:blink 4.7s infinite}
+.diaFace .lid.l{left:32.6%;background:linear-gradient(#9a6b4f,#8f6046 70%,#3a2016)}
+.diaFace .lid.r{left:53.5%;top:37.3%;background:linear-gradient(#7d5036,#6e4630 70%,#30190f);animation-delay:.02s}
+.chat.speaking .diaFace{border-color:var(--marigold);box-shadow:0 0 0 4px color-mix(in srgb,var(--marigold) 30%,transparent),0 0 18px color-mix(in srgb,var(--marigold) 45%,transparent)}
+.chat.bigface header{flex-wrap:wrap}
+.chat.bigface .diaFace{width:100%;height:auto;aspect-ratio:1;border-radius:14px;cursor:zoom-out}
+.chat.bigface .diaName{order:3}
+.eq{display:none;gap:2px;height:12px;align-items:flex-end;margin-top:3px}
+.eq i{width:3px;background:var(--marigold);border-radius:2px;animation:eq .5s ease-in-out infinite alternate}
+.eq i:nth-child(2){animation-delay:.12s}.eq i:nth-child(3){animation-delay:.24s}.eq i:nth-child(4){animation-delay:.08s}
+.chat.speaking .eq{display:flex}
+.brand .diaMini img{width:56px;height:56px;border-radius:50%;object-fit:cover;border:2px solid var(--peacock)}
+@keyframes breathe{50%{transform:scale(1.012) translateY(-.4%)}}
+@keyframes jaw{from{transform:translateY(0)}to{transform:translateY(1.3%) scaleY(1.03)}}
+@keyframes blink{0%,95.5%,100%{transform:scaleY(0)}97.5%{transform:scaleY(1)}}
+@keyframes eq{from{height:3px}to{height:12px}}
+@media (prefers-reduced-motion:reduce){.diaFace img,.diaFace .lid,.eq i{animation:none!important}}
+
+/* Support and finance */
+.quote{margin:6px 0;padding:6px 10px;border-left:3px solid var(--line);color:var(--muted);font-style:italic;white-space:pre-wrap}
+table.inv{width:100%;border-collapse:collapse;font-size:.84rem;margin:6px 0}
+table.inv td{padding:4px 2px;border-bottom:1px dashed var(--line)}
+table.inv td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.inv tr.tot td{font-weight:700;border-bottom:0;border-top:2px solid var(--line)}
+.pnl{max-width:520px}
+.m .btn.act + .btn.act{margin-top:4px}

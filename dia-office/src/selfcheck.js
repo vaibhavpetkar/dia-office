@@ -6,6 +6,7 @@ import { log, status, problems, problem } from "./events.js";
 import { run as runLead } from "./workflows/sales.js";
 import { prepare, evaluate } from "./workflows/hiring.js";
 import { startEngineering, promote } from "./workflows/engineering.js";
+import { triage } from "./workflows/support.js";
 import { repairable } from "./repair.js";
 
 const STUCK_AFTER = "3 minutes";
@@ -13,21 +14,23 @@ const MAX_TRIES = 2;
 const tries = new Map(); // "lead:4" -> attempts, so a flow that keeps failing isn't retried forever
 
 async function stuckWork() {
-  const [leads, candidates, projects] = await Promise.all([
+  const [leads, candidates, projects, tickets] = await Promise.all([
     q(`SELECT l.* FROM leads l WHERE l.created_at < now() - interval '${STUCK_AFTER}'
        AND (l.status = 'new' OR (l.status = 'qualified' AND NOT EXISTS
          (SELECT 1 FROM approvals a WHERE a.kind = 'project' AND a.ref_id = l.id)))`),
     q(`SELECT c.* FROM candidates c WHERE c.created_at < now() - interval '${STUCK_AFTER}'
        AND (c.status = 'new' OR c.status = 'evaluating' OR (c.kind = 'ai' AND c.status = 'interview_sent'))`),
     q(`SELECT * FROM projects WHERE created_at < now() - interval '${STUCK_AFTER}'
-       AND (stage IN ('Work order', 'Planning') OR (stage = 'Live' AND marketing IS NULL))`)
+       AND (stage IN ('Work order', 'Planning') OR (stage = 'Live' AND marketing IS NULL))`),
+    q(`SELECT * FROM tickets WHERE status = 'new' AND created_at < now() - interval '${STUCK_AFTER}'`)
   ]);
   return [
     ...leads.rows.map(l => ({ key: `lead:${l.id}`, label: `lead ${l.company}`, fix: () => runLead(l) })),
     ...candidates.rows.map(c => ({ key: `cand:${c.id}`, label: `candidate ${c.name}`,
       fix: () => c.status === "evaluating" ? evaluate(c.id) : prepare(c) })),
     ...projects.rows.map(p => ({ key: `proj:${p.id}`, label: `project ${p.company}`,
-      fix: () => p.stage === "Live" ? promote(p) : startEngineering(p.id) }))
+      fix: () => p.stage === "Live" ? promote(p) : startEngineering(p.id) })),
+    ...tickets.rows.map(t => ({ key: `ticket:${t.id}`, label: `ticket #${t.id} from ${t.customer}`, fix: () => triage(t) }))
   ];
 }
 

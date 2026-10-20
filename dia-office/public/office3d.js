@@ -10,7 +10,9 @@ const DEPT = {
   hr: { name: "HR", color: "#d23a5f", x: -6.6, z: 0.4, w: 12.4, d: 5.6 },
   sales: { name: "Sales", color: "#e0a020", x: 6.6, z: 0.4, w: 12.4, d: 5.6 },
   eng: { name: "Engineering", color: "#3b7dd8", x: -6.6, z: 6.6, w: 12.4, d: 5.6 },
-  mkt: { name: "Marketing", color: "#8a5bd0", x: 6.6, z: 6.6, w: 12.4, d: 5.6 }
+  mkt: { name: "Marketing", color: "#8a5bd0", x: 6.6, z: 6.6, w: 12.4, d: 5.6 },
+  support: { name: "Support", color: "#12a39c", x: -6.6, z: 12.8, w: 12.4, d: 5.6 },
+  fin: { name: "Finance", color: "#4f8f3a", x: 6.6, z: 12.8, w: 12.4, d: 5.6 }
 };
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -27,7 +29,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 200);
 camera.position.set(0, 17, 22);
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 0.6, 1.2);
+controls.target.set(0, 0.6, 3.4);
 controls.enableDamping = true;
 controls.minDistance = 8;
 controls.maxDistance = 42;
@@ -40,7 +42,7 @@ const sun = new THREE.DirectionalLight("#fff3e0", 2.4);
 sun.position.set(-10, 22, 14);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-Object.assign(sun.shadow.camera, { left: -18, right: 18, top: 18, bottom: -18, near: 1, far: 70 });
+Object.assign(sun.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 80 });
 sun.shadow.bias = -0.0004;
 scene.add(sun);
 const fill = new THREE.DirectionalLight("#cfe8ff", 0.6);
@@ -68,14 +70,14 @@ function textTexture(lines, { w = 512, h = 128, bg = null, fg = "#1b2a26", font 
 }
 
 /* ---------- The floor and rooms ---------- */
-const floorGeo = new THREE.PlaneGeometry(30, 22);
+const floorGeo = new THREE.PlaneGeometry(30, 28);
 const floor = mesh(floorGeo, mat("#e9ece6", { roughness: 0.9 }), { cast: false, receive: true });
-floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 1.2);
+floor.rotation.x = -Math.PI / 2; floor.position.set(0, 0, 4.2);
 scene.add(floor);
 // Wood-look strips so the floor doesn't read as a flat plane.
 for (let i = -14; i <= 14; i += 1) {
-  const strip = mesh(new THREE.PlaneGeometry(0.02, 22), mat("#d9ddd5"), { cast: false, receive: true });
-  strip.rotation.x = -Math.PI / 2; strip.position.set(i, 0.002, 1.2); scene.add(strip);
+  const strip = mesh(new THREE.PlaneGeometry(0.02, 28), mat("#d9ddd5"), { cast: false, receive: true });
+  strip.rotation.x = -Math.PI / 2; strip.position.set(i, 0.002, 4.2); scene.add(strip);
 }
 
 const rooms = {};
@@ -130,6 +132,12 @@ for (const [k, r] of Object.entries(DEPT)) {
     const b = new THREE.Mesh(new THREE.PlaneGeometry(0.5, h), new THREE.MeshBasicMaterial({ color: i % 2 ? "#5d7e8f" : "#4b6a7a" }));
     b.position.set(-2.1 + i * 0.6, 0.9 + h / 2, -r.d / 2 + 0.11); g.add(b);
   }
+  // Her portrait on the cabin wall.
+  const photo = new THREE.TextureLoader().load("dia-frame.jpg"); photo.colorSpace = THREE.SRGBColorSpace;
+  const frame = mesh(new THREE.BoxGeometry(1.36, 1.44, 0.06), mat("#2b1d14", { roughness: 0.4 }));
+  frame.position.set(-4.1, 2.8, -r.d / 2 + 0.14); g.add(frame);
+  const pic = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.28), new THREE.MeshBasicMaterial({ map: photo }));
+  pic.position.set(-4.1, 2.8, -r.d / 2 + 0.18); g.add(pic);
   const desk = mesh(new THREE.BoxGeometry(3, 0.12, 1.2), mat("#5b3a29", { roughness: 0.45 }), { receive: true });
   desk.position.set(-2.6, 0.8, -0.6); g.add(desk);
   for (const [x, z] of [[-1.35, -0.5], [1.35, -0.5], [-1.35, 0.5], [1.35, 0.5]]) {
@@ -158,6 +166,11 @@ function hair(style, color, scale = 1) {
     for (const s of [-1, 1]) {
       const lock = mesh(new THREE.CapsuleGeometry(0.1, style === "dia" ? 0.7 : 0.35, 6, 12), m);
       lock.position.set(s * 0.31, style === "dia" ? -0.42 : -0.25, 0.06); lock.rotation.z = s * 0.08; g.add(lock);
+      // Soft waves: a chain of curls down the front of each shoulder.
+      if (style === "dia") for (let i = 0; i < 3; i++) {
+        const c = mesh(new THREE.CapsuleGeometry(0.075 - i * 0.012, 0.32, 6, 12), m);
+        c.position.set(s * (0.34 + i * 0.03), -0.3 - i * 0.28, 0.1 - i * 0.02); c.rotation.z = s * (i % 2 ? -0.18 : 0.12); c.scale.z = 0.7; g.add(c);
+      }
     }
   }
   if (style === "bun") { const bun = mesh(new THREE.SphereGeometry(0.17, 16, 12), m); bun.position.set(0, 0.38, -0.18); g.add(bun); }
@@ -172,27 +185,37 @@ function hair(style, color, scale = 1) {
 function makePerson(a, { scale = 1, dia = false } = {}) {
   const look = a.look || {};
   const skin = mat(dia ? "#c98a64" : SKIN[look.skin ?? 0] || SKIN[0], { roughness: 0.5 });
-  const shirtColor = dia ? "#0f8a84" : look.shirt || "#2b6cb0";
+  const shirtColor = dia ? "#1f6b45" : look.shirt || "#2b6cb0";
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body); root.userData.agentId = a.id;
 
   const torso = mesh(new THREE.CapsuleGeometry(0.33, 0.48, 8, 20), mat(shirtColor, { roughness: 0.7 }));
   torso.position.y = 0.95; torso.scale.set(1, 1, 0.78); body.add(torso);
   if (dia) {
-    // Saree drape across the shoulder, gold border, necklace.
-    const silk = mat("#f2a516", { roughness: 0.4, metalness: 0.15 });
-    const pallu = mesh(new THREE.BoxGeometry(0.26, 1.05, 0.06), silk);
-    pallu.position.set(0.04, 0.98, 0.25); pallu.rotation.set(0.12, 0, 0.62); body.add(pallu);
-    const back = mesh(new THREE.BoxGeometry(0.28, 1.0, 0.05), silk);
-    back.position.set(0.24, 0.9, -0.22); back.rotation.z = -0.1; body.add(back);
-    const trim = mesh(new THREE.BoxGeometry(0.04, 1.05, 0.065), mat("#c2264b"));
-    trim.position.set(0.12, 0.98, 0.26); trim.rotation.set(0.12, 0, 0.62); body.add(trim);
-    const skirt = mesh(new THREE.CylinderGeometry(0.34, 0.5, 0.8, 24), mat("#0c7a75", { roughness: 0.6 }));
-    skirt.position.y = 0.42; body.add(skirt);
-    const border = mesh(new THREE.TorusGeometry(0.5, 0.03, 8, 40), mat("#f2c14e", { metalness: 0.6, roughness: 0.3 }));
-    border.rotation.x = Math.PI / 2; border.position.y = 0.04; body.add(border);
-    const neck = mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 24, Math.PI), mat("#f2c14e", { metalness: 0.7, roughness: 0.25 }));
-    neck.position.set(0, 1.44, 0.12); neck.rotation.set(-1.2, 0, Math.PI); body.add(neck);
+    // Green blazer over a black satin top, slim trousers and a fine silver pendant (from her portrait).
+    const lapelMat = mat("#1a5236", { roughness: 0.75 });
+    const top = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-0.15, 0), new THREE.Vector2(0.15, 0), new THREE.Vector2(0, -0.36)])),
+      mat("#111214", { roughness: 0.25, metalness: 0.2 }));
+    top.position.set(0, 1.4, 0.262); body.add(top);
+    const skin2 = mat("#c98a64", { roughness: 0.5 });
+    const chest = new THREE.Mesh(new THREE.ShapeGeometry(new THREE.Shape([new THREE.Vector2(-0.12, 0), new THREE.Vector2(0.12, 0), new THREE.Vector2(0, -0.12)])), skin2);
+    chest.position.set(0, 1.43, 0.264); body.add(chest);
+    for (const s of [-1, 1]) {
+      const lapel = mesh(new THREE.BoxGeometry(0.075, 0.46, 0.03), lapelMat);
+      lapel.position.set(s * 0.1, 1.22, 0.272); lapel.rotation.set(0.05, s * 0.25, -s * 0.3); body.add(lapel);
+    }
+    const button = mesh(new THREE.SphereGeometry(0.024, 10, 8), mat("#0d2d1e")); button.position.set(0, 0.86, 0.262); body.add(button);
+    const hem = mesh(new THREE.CylinderGeometry(0.34, 0.37, 0.22, 24), mat("#1f6b45", { roughness: 0.7 })); hem.position.y = 0.6; hem.scale.z = 0.8; body.add(hem);
+    for (const s of [-0.13, 0.13]) {
+      const leg = mesh(new THREE.CapsuleGeometry(0.11, 0.42, 6, 12), mat("#15161a"));
+      leg.position.set(s, 0.32, 0); body.add(leg);
+    }
+    const silver = mat("#e3e6ea", { metalness: 0.9, roughness: 0.2 });
+    for (const s of [-1, 1]) {
+      const chain = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.2, 4), silver, { cast: false });
+      chain.position.set(s * 0.05, 1.38, 0.268); chain.rotation.z = s * 0.5; body.add(chain);
+    }
+    const pendant = mesh(new THREE.OctahedronGeometry(0.022), silver); pendant.position.set(0, 1.29, 0.275); body.add(pendant);
   } else {
     const collar = mesh(new THREE.TorusGeometry(0.16, 0.035, 8, 20), mat(new THREE.Color(shirtColor).lerp(new THREE.Color("#ffffff"), 0.35)));
     collar.position.y = 1.43; collar.rotation.x = Math.PI / 2; body.add(collar);
@@ -208,10 +231,9 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
   const arms = [];
   for (const s of [-1, 1]) {
     const pivot = new THREE.Group(); pivot.position.set(s * 0.4, 1.32, 0); body.add(pivot);
-    const upper = mesh(new THREE.CapsuleGeometry(0.095, 0.42, 6, 12), mat(dia && s > 0 ? "#f2a516" : shirtColor, { roughness: 0.7 }));
+    const upper = mesh(new THREE.CapsuleGeometry(0.095, 0.42, 6, 12), mat(shirtColor, { roughness: 0.7 }));
     upper.position.y = -0.28; pivot.add(upper);
     const hand = mesh(new THREE.SphereGeometry(0.1, 12, 10), skin); hand.position.y = -0.56; pivot.add(hand);
-    if (dia) { const bangle = mesh(new THREE.TorusGeometry(0.1, 0.018, 6, 16), mat("#f2c14e", { metalness: 0.7, roughness: 0.25 })); bangle.rotation.x = Math.PI / 2; bangle.position.y = -0.47; pivot.add(bangle); }
     pivot.rotation.z = s * 0.12;
     arms.push(pivot);
   }
@@ -250,15 +272,11 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
     for (const s of [-1, 1]) { const ring = mesh(new THREE.TorusGeometry(0.075, 0.012, 8, 20), gm, { cast: false }); ring.position.set(s * 0.125, 0.03, 0.36); head.add(ring); }
     const bridge = mesh(new THREE.BoxGeometry(0.06, 0.012, 0.012), gm, { cast: false }); bridge.position.set(0, 0.04, 0.37); head.add(bridge);
   }
-  if (dia) for (const s of [-1, 1]) {
-    const ring = mesh(new THREE.TorusGeometry(0.045, 0.012, 8, 16), mat("#f2c14e", { metalness: 0.8, roughness: 0.2 }));
-    ring.position.set(s * 0.36, -0.12, 0.02); ring.rotation.y = Math.PI / 2; head.add(ring);
-    const drop = mesh(new THREE.SphereGeometry(0.025, 8, 8), mat("#f2c14e", { metalness: 0.8, roughness: 0.2 })); drop.position.set(s * 0.36, -0.17, 0.02); head.add(drop);
+  if (dia) for (const s of [-1, 1]) { // small silver hoops
+    const ring = mesh(new THREE.TorusGeometry(0.038, 0.009, 8, 20), mat("#e3e6ea", { metalness: 0.9, roughness: 0.2 }));
+    ring.position.set(s * 0.355, -0.1, 0.03); ring.rotation.y = Math.PI / 2; head.add(ring);
   }
-  head.add(hair(dia ? "dia" : look.style || "short", look.hair || (dia ? "#2b1810" : "#1e1614")));
-  if (dia) { // flower in her hair
-    for (let i = 0; i < 6; i++) { const p = mesh(new THREE.SphereGeometry(0.035, 8, 8), mat("#fffaf0")); p.position.set(0.3 + Math.cos(i) * 0.04, 0.2 + Math.sin(i) * 0.04, -0.1); head.add(p); }
-  }
+  head.add(hair(dia ? "dia" : look.style || "short", look.hair || (dia ? "#120b08" : "#1e1614")));
   if (look.headset) {
     const band = mesh(new THREE.TorusGeometry(0.39, 0.022, 8, 24, Math.PI), mat("#222")); band.position.y = 0.02; head.add(band);
     const mic = mesh(new THREE.CapsuleGeometry(0.018, 0.2, 4, 8), mat("#222")); mic.position.set(-0.3, -0.18, 0.16); mic.rotation.set(0.9, 0.5, 0); head.add(mic);
@@ -375,11 +393,11 @@ function select(id) {
 /* ---------- Animation ---------- */
 const clock = new THREE.Clock(), v = new THREE.Vector3();
 // Pull the camera back just far enough that the whole floor fits the stage, wide or narrow.
-const VIEW_DIR = new THREE.Vector3(0, 0.66, 0.75).normalize(), HOME = new THREE.Vector3(0, 0.6, 0.6);
+const VIEW_DIR = new THREE.Vector3(0, 0.66, 0.75).normalize(), HOME = new THREE.Vector3(0, 0.6, 3.4);
 function homeDistance() {
   const v = THREE.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(v / 2) * camera.aspect);
   // The front rows sit closer to the camera and look wider, hence the extra 25% on width.
-  return Math.max(13.2 * 1.25 / Math.tan(hfov / 2), 10.5 / Math.tan(v / 2)) * 0.98;
+  return Math.max(13.2 * 1.25 / Math.tan(hfov / 2), 13.6 / Math.tan(v / 2)) * 0.98;
 }
 let closeUp = false;
 function home() { controls.target.copy(HOME); camera.position.copy(HOME).addScaledVector(VIEW_DIR, homeDistance()); }
