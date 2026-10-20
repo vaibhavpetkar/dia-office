@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dia's Virtual Office</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Mukta:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="office.css">
+</head>
+<body>
+<div class="wrap">
+  <section class="top">
+    <div class="brand">
+      <span class="diaMini" id="diaMini"></span>
+      <div><h1>Inveon Technologies · Virtual Office</h1><p>Run by Dia · <span class="prov" id="prov">connecting…</span></p></div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="ctrls">
+      <span class="key"><input id="key" type="password" placeholder="Director key" autocomplete="off"><button class="btn" id="bKey">Unlock</button></span>
+      <button class="btn primary" id="bLead">+ New lead</button>
+      <button class="btn primary" id="bCand">+ New candidate</button>
+    </div>
+  </section>
+
+  <div class="main">
+    <section class="floor" id="floor" aria-label="Office floor"></section>
+    <aside class="rail">
+      <div class="card" id="leadCard" hidden>
+        <h3>New lead</h3>
+        <form class="form" id="leadForm">
+          <label for="lCompany">Company</label><input id="lCompany" required>
+          <div class="two"><div><label for="lContact">Contact</label><input id="lContact"></div><div><label for="lEmail">Email</label><input id="lEmail" type="email"></div></div>
+          <label for="lNeed">What they need</label><textarea id="lNeed" required></textarea>
+          <div class="two"><div><label for="lBudget">Budget (₹)</label><input id="lBudget" type="number" min="0"></div>
+            <div><label for="lSource">Source</label><select id="lSource"><option>Cold call</option><option>CRM</option><option>Website form</option><option>Referral</option><option>International</option></select></div></div>
+          <button class="btn primary">Give to Kabir</button><p class="msg" id="leadMsg"></p>
+        </form>
+      </div>
+      <div class="card" id="candCard" hidden>
+        <h3>New candidate</h3>
+        <form class="form" id="candForm">
+          <div class="two"><div><label for="cName">Name</label><input id="cName" required></div><div><label for="cEmail">Email</label><input id="cEmail" type="email"></div></div>
+          <div class="two"><div><label for="cRole">Role</label><input id="cRole" required placeholder="Frontend Developer"></div>
+            <div><label for="cDept">Department</label><select id="cDept"><option value="eng">Engineering</option><option value="sales">Sales</option><option value="mkt">Marketing</option><option value="hr">HR</option></select></div></div>
+          <div class="two"><div><label for="cKind">Type</label><select id="cKind"><option value="human">Human</option><option value="ai">AI agent</option></select></div>
+            <div><label for="cCost">Monthly cost (₹)</label><input id="cCost" type="number" min="0" value="20000"></div></div>
+          <label for="cResume">Resume or notes</label><textarea id="cResume"></textarea>
+          <button class="btn primary">Give to Asha</button><p class="msg" id="candMsg"></p>
+        </form>
+      </div>
+      <div class="card">
+        <h3>Dia needs your decision <span class="count" id="apCount" data-n="0">0</span></h3>
+        <div id="approvals"></div>
+      </div>
+      <div class="card"><h3>Selected</h3><div id="who"></div></div>
+      <div class="card"><h3>Projects <span class="pill" id="projCount">0</span></h3><div id="projects"></div></div>
+      <div class="card"><h3>Office activity</h3><div class="feed" id="feed" aria-live="polite"></div></div>
+    </aside>
+  </div>
+</div>
+
+<script src="faces.js"></script>
+<script>
+const DEPTS={dia:{name:"Dia's Cabin",sub:"Owner · final decisions"},hr:{name:"HR",sub:"Hiring · policies · reporting manager"},
+  sales:{name:"Sales",sub:"Cold calls · CRM · lead analysis"},eng:{name:"Engineering",sub:"Plan · build · deploy · go live"},mkt:{name:"Marketing",sub:"Campaigns · case studies"}};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr=n=>n?"₹"+Number(n).toLocaleString("en-IN"):"—";
+let S={agents:[],approvals:[],projects:[],activity:[],stats:{},stages:[]},selected="dia";
+let KEY="";try{KEY=localStorage.getItem("diaKey")||""}catch{}
+
+async function api(path,opts={}){
+  const r=await fetch(path,{...opts,headers:{"content-type":"application/json",authorization:"Bearer "+KEY,...(opts.headers||{})}});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||("Request failed ("+r.status+")"));
+  return j;
+}
+const look=a=>({...a.look,skin:SK[a.look?.skin??0]||SK[0],ai:a.kind!=="human"});
+
+/* ---------- Render ---------- */
+const floor=document.getElementById("floor");
+function renderFloor(){
+  const keep={};document.querySelectorAll(".agent .bub").forEach(b=>keep[b.parentElement.dataset.id]=b.textContent);
+  floor.innerHTML=Object.entries(DEPTS).map(([k,d])=>k==="dia"?`
+    <div class="room cabin" data-d="dia"><header><h2>${d.name}</h2><span>${d.sub}</span></header>
+      <div class="cabinRow"><button class="diaBig agent" id="ag-dia" data-id="dia" aria-label="Dia, virtual owner">${diaSVG()}<span class="bub"></span></button>
+      <div class="diaSay"><div class="mr">नमस्कार! मी दिया.</div>
+        <p>I run the office for Inveon. Every hire and every new project comes to you for the final yes.</p>
+        <div class="pipeline"><span>Lead → Analysis → Manager → Dia → You</span><span>Sale order → Work order → Build → Live → Marketing</span><span>Candidate → AI interview → Task → You → Onboard</span></div></div></div></div>`:`
+    <div class="room" data-d="${k}"><header><h2>${d.name}</h2><span>${d.sub}</span></header><div class="desks" id="desks-${k}"></div></div>`).join("");
+  for(const a of S.agents){
+    if(a.id==="dia")continue;
+    const el=document.createElement("button");el.className="agent";el.id="ag-"+a.id;el.dataset.id=a.id;
+    el.innerHTML=`<span class="bub"></span><span class="body">${face(look(a))}</span><span class="desk"></span>
+      <span class="nm">${esc(a.name)}</span><span class="rl">${esc(a.role)}</span><span class="tag ${a.kind==="human"?"human":""}">${a.kind==="human"?"HUMAN":"AI AGENT"}</span>`;
+    document.getElementById("desks-"+a.dept)?.appendChild(el);
+  }
+  for(const a of S.agents){const t=keep[a.id]??(a.status!=="Idle"?a.status:"");bubble(a.id,t,!!t&&a.id!=="dia")}
+}
+floor.addEventListener("click",e=>{const b=e.target.closest(".agent");if(b){selected=b.dataset.id;renderWho()}});
+function bubble(id,text,working){
+  const el=document.getElementById("ag-"+id);if(!el)return;
+  el.querySelector(".bub").textContent=text||"";el.classList.toggle("working",!!working&&id!=="dia");
+}
+function renderWho(){
+  const a=S.agents.find(x=>x.id===selected)||S.agents[0];if(!a)return;
+  document.querySelectorAll(".agent").forEach(e=>e.classList.toggle("sel",e.dataset.id===selected));
+  const av=a.id==="dia"?diaSVG().replace('class="dia"','class="dia av"'):face(look(a));
+  const recent=S.activity.filter(x=>x.agent_id===a.id).slice(0,5);
+  document.getElementById("who").innerHTML=`<div class="who-panel">${av}<div><b>${esc(a.name)}</b> · ${esc(a.role)}<br>
+    <span style="color:var(--muted);font-size:.8rem">${DEPTS[a.dept]?.name||""}${a.monthly_cost?` · ${inr(a.monthly_cost)}/mo`:""} · ${a.tasks_done} tasks done</span></div></div>
+    <dl class="kv" style="margin:8px 0 0"><dt>Now</dt><dd>${esc(a.status||"Idle")}</dd></dl>
+    ${recent.length?`<ul>${recent.map(r=>`<li>${esc(r.text)}</li>`).join("")}</ul>`:`<p class="empty">No finished work yet.</p>`}`;
+}
+function renderKpis(){
+  const s=S.stats,team=S.agents.filter(a=>a.id!=="dia").length;
+  const it=[[team,"Team"],[s.leads,"Leads"],[s.hot,"Hot"],[s.won,"Won"],[s.live,"Live"],["₹"+((s.revenue||0)/1e5).toFixed(1)+"L","Revenue"],
+    ["₹"+((s.payroll||0)/1e5).toFixed(2)+"L","Monthly billing"],["$"+(s.ai_spend_usd||0).toFixed(2)+(s.ai_budget_usd?` / ${s.ai_budget_usd}`:""),"AI spend (month)"]];
+  document.getElementById("kpis").innerHTML=it.map(([v,l])=>`<div class="kpi"><b>${v??0}</b><span>${l}</span></div>`).join("");
+  document.getElementById("prov").textContent="AI: "+(s.provider||"?");
+}
+function fmtBody(b){
+  const rows=Object.entries(b||{}).filter(([k])=>!["client_message"].includes(k)).map(([k,v])=>
+    `<dt>${esc(k.replace(/_/g," "))}</dt><dd>${esc(Array.isArray(v)?v.join("; "):typeof v==="number"&&/price|budget|cost/.test(k)?inr(v):v)}</dd>`).join("");
+  return `<dl class="kv">${rows}</dl>`;
+}
+function renderApprovals(){
+  const box=document.getElementById("approvals"),n=S.approvals.length,c=document.getElementById("apCount");
+  c.textContent=n;c.dataset.n=n;
+  if(!n){box.innerHTML='<p class="empty">Nothing waiting. Dia will ask here before any hire or new project.</p>';return}
+  box.innerHTML=S.approvals.map(a=>`<div class="appr"><span class="who">Dia asks · ${a.kind==="hire"?"Hiring":"New project"}</span><b>${esc(a.title)}</b>
+    ${fmtBody(a.body)}${a.body.client_message?`<p><i>Message to client:</i> ${esc(a.body.client_message)}</p>`:""}
+    <div class="row"><button class="btn yes" data-ap="${a.id}" data-d="approve">${a.kind==="hire"?"Hire":"Approve project"}</button>
+    <button class="btn no" data-ap="${a.id}" data-d="reject">${a.kind==="hire"?"Reject":"Decline"}</button></div><p class="msg" id="apm${a.id}"></p></div>`).join("");
+}
+document.getElementById("approvals").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-ap]");if(!b)return;
+  try{await api(`/api/approvals/${b.dataset.ap}`,{method:"POST",body:JSON.stringify({decision:b.dataset.d})})}
+  catch(err){const m=document.getElementById("apm"+b.dataset.ap);m.textContent=err.message;m.classList.add("err")}
+});
+const stageCol={Won:"sales","Work order":"sales",Planning:"eng",Building:"eng",Testing:"eng",Deploying:"eng",Live:"ok",Promoted:"mkt"};
+function renderProjects(){
+  const box=document.getElementById("projects");document.getElementById("projCount").textContent=S.projects.length;
+  if(!S.projects.length){box.innerHTML='<p class="empty">Won projects show up here with their sale order and work order.</p>';return}
+  box.innerHTML=S.projects.map(p=>{
+    const i=S.stages.indexOf(p.stage),next=["Building","Testing","Deploying"].includes(p.stage)?S.stages[i+1]:null,pct=Math.round(i/(S.stages.length-1)*100);
+    return `<div class="proj"><div class="top2"><b>${esc(p.company)}</b><span class="pill" style="--c:var(--${stageCol[p.stage]||"eng"})">${esc(p.stage)}</span></div>
+      <span style="font-size:.78rem;color:var(--muted)">${esc(p.need)}</span><span class="ids">${esc(p.so||"")} · ${esc(p.wo||"")} · ${inr(p.value)}</span>
+      <div class="bar"><i style="width:${pct}%;background:var(--${stageCol[p.stage]||"eng"})"></i></div>
+      ${p.plan?`<details><summary style="font-size:.76rem;color:var(--peacock);cursor:pointer">Build plan</summary><pre class="rep">${esc(planText(p.plan))}</pre></details>`:""}
+      ${p.marketing?`<details><summary style="font-size:.76rem;color:var(--peacock);cursor:pointer">Marketing drafts</summary><pre class="rep">${esc(JSON.stringify(p.marketing,null,2))}</pre></details>`:""}
+      ${next?`<button class="btn" data-pj="${p.id}" data-st="${next}">Mark as ${next}</button>`:""}</div>`}).join("");
+}
+const planText=p=>`Stack: ${(p.stack||[]).join(", ")}\n${p.architecture||""}\n\nTasks:\n${(p.tasks||[]).map(t=>`- ${t.title} (${t.owner}, ${t.days}d)`).join("\n")}\n\nDeploy: ${p.deploy||""}\nRisks: ${(p.risks||[]).join("; ")}`;
+document.getElementById("projects").addEventListener("click",async e=>{
+  const b=e.target.closest("[data-pj]");if(!b)return;b.disabled=true;
+  try{await api(`/api/projects/${b.dataset.pj}/stage`,{method:"POST",body:JSON.stringify({stage:b.dataset.st})})}catch(err){b.textContent=err.message;b.disabled=false}
+});
+const feed=document.getElementById("feed");
+function evHTML(x){
+  const a=S.agents.find(g=>g.id===x.agent_id),t=new Date(x.created_at);
+  const d=x.data?(x.data.report||x.data.evaluation||x.data.plan||x.data.campaign||x.data.content||x.data):null;
+  return `<time>${String(t.getHours()).padStart(2,"0")}:${String(t.getMinutes()).padStart(2,"0")}</time>
+    <div style="--c:var(--${a?.dept||"dia"})"><b>${esc(a?.name||"Office")}</b> ${esc(x.text)}
+    ${d?`<details><summary>Details</summary><pre class="rep">${esc(typeof d==="string"?d:JSON.stringify(d,null,2))}</pre></details>`:""}</div>`;
+}
+function renderFeed(){feed.innerHTML=S.activity.map(x=>`<div class="ev">${evHTML(x)}</div>`).join("")||'<p class="empty">Quiet so far. Add a lead or a candidate to start the day.</p>'}
+
+async function fly(from,to,label){
+  const f=document.getElementById("ag-"+from),t=document.getElementById("ag-"+to);if(!f||!t)return;
+  const fr=floor.getBoundingClientRect(),a=f.getBoundingClientRect(),b=t.getBoundingClientRect();
+  const d=document.createElement("div");d.className="doc";d.textContent="📄 "+label;
+  d.style.left=(a.left-fr.left+a.width/2-30)+"px";d.style.top=(a.top-fr.top+20)+"px";
+  floor.appendChild(d);d.getBoundingClientRect();
+  d.style.transform=`translate(${b.left-a.left}px,${b.top-a.top}px)`;
+  setTimeout(()=>d.remove(),1250);
+}
+
+/* ---------- Data ---------- */
+async function load(){
+  const r=await fetch("/api/state");S=await r.json();
+  renderFloor();renderKpis();renderApprovals();renderProjects();renderFeed();renderWho();
+}
+let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(load,400)};
+function connect(){
+  const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  ws.onmessage=e=>{
+    const m=JSON.parse(e.data);
+    if(m.type==="agent"){const a=S.agents.find(x=>x.id===m.id);if(a)a.status=m.status||"Idle";bubble(m.id,m.status,m.working);if(m.id===selected)renderWho()}
+    if(m.type==="activity"){S.activity.unshift(m.item);S.activity=S.activity.slice(0,60);
+      const a=S.agents.find(x=>x.id===m.item.agent_id);if(a)a.tasks_done++;
+      const el=document.createElement("div");el.className="ev";el.innerHTML=evHTML(m.item);feed.querySelector(".empty")?.remove();feed.prepend(el);
+      if(m.item.agent_id===selected)renderWho()}
+    if(m.type==="handoff")fly(m.from,m.to,m.label);
+    if(m.type==="approval"){S.approvals.push(m.item);renderApprovals()}
+    if(m.type==="approval_done"){S.approvals=S.approvals.filter(a=>a.id!==m.id);renderApprovals()}
+    if(m.type==="refresh")refreshSoon();
+  };
+  ws.onclose=()=>{document.getElementById("prov").textContent="reconnecting…";setTimeout(()=>{connect();load()},2000)};
+}
+
+/* ---------- Director controls ---------- */
+const keyIn=document.getElementById("key");keyIn.value=KEY;
+document.getElementById("bKey").onclick=async()=>{
+  KEY=keyIn.value.trim();try{localStorage.setItem("diaKey",KEY)}catch{}
+  try{await api("/api/auth/check");document.getElementById("bKey").textContent="Unlocked"}catch(e){document.getElementById("bKey").textContent="Wrong key"}
+};
+document.getElementById("bLead").onclick=()=>{const c=document.getElementById("leadCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("lCompany").focus()};
+document.getElementById("bCand").onclick=()=>{const c=document.getElementById("candCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("cName").focus()};
+const v=id=>document.getElementById(id).value.trim();
+document.getElementById("leadForm").onsubmit=async e=>{
+  e.preventDefault();const m=document.getElementById("leadMsg");m.className="msg";
+  try{await api("/api/leads",{method:"POST",body:JSON.stringify({company:v("lCompany"),contact:v("lContact"),email:v("lEmail"),need:v("lNeed"),budget:+v("lBudget")||null,source:v("lSource")})});
+    e.target.reset();m.textContent="Kabir has the lead.";}catch(err){m.textContent=err.message;m.classList.add("err")}
+};
+document.getElementById("candForm").onsubmit=async e=>{
+  e.preventDefault();const m=document.getElementById("candMsg");m.className="msg";
+  const kind=v("cKind");
+  try{const r=await api("/api/candidates",{method:"POST",body:JSON.stringify({name:v("cName"),email:v("cEmail"),role:v("cRole"),dept:v("cDept"),kind,monthly_cost:+v("cCost")||0,resume:v("cResume")})});
+    e.target.reset();m.textContent=kind==="ai"?"Asha is interviewing the AI agent.":"Interview link: "+r.interview_link;}catch(err){m.textContent=err.message;m.classList.add("err")}
+};
+
+document.getElementById("diaMini").innerHTML=diaSVG();
+load().then(connect).catch(e=>{document.getElementById("prov").textContent="server offline: "+e.message});
+</script>
+</body>
+</html>

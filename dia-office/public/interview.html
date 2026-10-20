@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Interview · Inveon Technologies</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@700&family=Mukta:wght@400;600&display=swap">
+<style>
+:root{--bg:#eef2ee;--surface:#fff;--ink:#1b2a26;--muted:#5a6a64;--line:#cfd9d2;--accent:#0f6e6a;--bad:#c2264b}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1715;--surface:#16211e;--ink:#e6eeea;--muted:#9bada6;--line:#2a3a35;--accent:#3fb3aa;--bad:#f0607f;color-scheme:dark}}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Mukta",system-ui,sans-serif;padding:24px max(16px,env(safe-area-inset-left))}
+main{max-width:720px;margin:0 auto;display:grid;gap:16px}
+h1{font-family:"Baloo 2",system-ui,sans-serif;margin:0;line-height:1.1}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:grid;gap:8px}
+label{font-weight:600}
+textarea{width:100%;min-height:110px;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);box-sizing:border-box}
+button{font:inherit;font-weight:600;background:var(--accent);color:var(--surface);border:0;border-radius:999px;padding:10px 20px;cursor:pointer;justify-self:start}
+.muted{color:var(--muted)} .err{color:var(--bad)}
+</style>
+</head>
+<body>
+<main id="app"><p class="muted">Loading your interview…</p></main>
+<script>
+const t = new URLSearchParams(location.search).get("t");
+const app = document.getElementById("app");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+(async () => {
+  const r = await fetch(`/api/interview/${encodeURIComponent(t)}`);
+  const c = await r.json();
+  if (!r.ok) { app.innerHTML = `<p class="err">${esc(c.error)}</p>`; return; }
+  if (c.status !== "interview_sent") { app.innerHTML = `<h1>Thank you, ${esc(c.name)}</h1><p>Your answers were received. HR will contact you.</p>`; return; }
+  const qs = c.questions.questions || [];
+  app.innerHTML = `<h1>Interview for ${esc(c.role)}</h1>
+    <p class="muted">Hello ${esc(c.name)}. Answer in your own words. Our AI hiring agent scores the answers, and a person makes the final decision.</p>
+    <form id="f" class="card">${qs.map((q, i) => `<label for="q${i}">${i + 1}. ${esc(q)}</label><textarea id="q${i}" required></textarea>`).join("")}
+    <label for="task">Task: ${esc(c.questions.task || "")}</label><textarea id="task" required style="min-height:180px"></textarea>
+    <button>Submit answers</button><p id="msg" class="muted"></p></form>`;
+  document.getElementById("f").onsubmit = async e => {
+    e.preventDefault();
+    const body = { answers: qs.map((_, i) => document.getElementById("q" + i).value), task_answer: document.getElementById("task").value };
+    const r2 = await fetch(`/api/interview/${encodeURIComponent(t)}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const j = await r2.json();
+    if (r2.ok) app.innerHTML = `<h1>Thank you, ${esc(c.name)}</h1><p>Your answers were submitted. HR will contact you soon.</p>`;
+    else document.getElementById("msg").textContent = j.error;
+  };
+})();
+</script>
+</body>
+</html>

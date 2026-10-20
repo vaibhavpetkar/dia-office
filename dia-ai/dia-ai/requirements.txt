@@ -1,0 +1,4 @@
+strands-agents>=1.0
+anthropic[bedrock]>=1.15
+boto3
+python-dotenv
