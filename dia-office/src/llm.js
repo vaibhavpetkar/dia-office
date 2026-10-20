@@ -37,20 +37,35 @@ function parseJSON(text) {
 }
 
 /**
- * ask({ agent, tier, system, prompt, mock, maxTokens })
+ * ask({ agent, tier, system, prompt, mock, maxTokens, need })
  * Returns parsed JSON. `mock` is a function returning the canned answer used in mock mode.
+ * `need` lists keys the answer must have; a reply that isn't valid JSON or misses one is retried once.
  */
-export async function ask({ agent, tier = "fast", system, prompt, mock, maxTokens = 900 }) {
+export async function ask({ agent, tier = "fast", system, prompt, mock, maxTokens = 900, need = [] }) {
   const budget = parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0");
   if (P() !== "mock" && budget > 0 && (await monthSpendUSD()) >= budget)
     throw new Error(`Monthly AI budget of $${budget} reached. Raise MONTHLY_AI_BUDGET_USD to continue.`);
 
   const model = modelFor(tier);
   const sys = system + "\nReply with ONE JSON object only, no markdown, no extra text.";
-  let text, inTok = 0, outTok = 0;
+  const check = text => {
+    const j = parseJSON(text);
+    const miss = need.filter(k => j[k] === undefined || j[k] === null);
+    if (miss.length) throw new Error(`AI answer is missing ${miss.join(", ")}`);
+    return j;
+  };
+  try { return check(await callModel(agent, tier, model, sys, prompt, maxTokens, mock)); }
+  catch (e) {
+    if (P() === "mock" || !/JSON|missing|Unexpected|position/.test(e.message)) throw e;
+    const retry = `${prompt}\n\nYour previous reply could not be used (${e.message}). Reply again with exactly the JSON object asked for.`;
+    return check(await callModel(agent, tier, model, sys, retry, maxTokens, mock));
+  }
+}
 
+async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
+  let text, inTok = 0, outTok = 0;
   if (P() === "mock") {
-    await new Promise(r => setTimeout(r, 900));
+    await new Promise(r => setTimeout(r, process.env.MOCK_DELAY_MS ? Number(process.env.MOCK_DELAY_MS) : 900));
     text = JSON.stringify(mock ? mock() : {});
   } else if (P() === "ollama") {
     const res = await fetch(`${process.env.OLLAMA_URL}/api/chat`, {
@@ -80,8 +95,7 @@ export async function ask({ agent, tier = "fast", system, prompt, mock, maxToken
   const cost = P() === "bedrock" ? (inTok * pin + outTok * pout) / 1e6 : 0;
   await q("INSERT INTO llm_usage (agent_id,model,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5)",
     [agent, model, inTok, outTok, cost]);
-
-  return parseJSON(text);
+  return text;
 }
 
 // Embeddings for the company knowledge base.

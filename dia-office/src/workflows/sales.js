@@ -3,9 +3,10 @@ import { q, one } from "../db.js";
 import { ask, seeded } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh } from "../events.js";
+import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { requestApproval, onDecision } from "./approvals.js";
 import { startEngineering } from "./engineering.js";
+import { draftInvoice } from "./finance.js";
 import { sendMail } from "../mail.js";
 
 const inr = n => (n ? "₹" + Number(n).toLocaleString("en-IN") : "unknown");
@@ -15,11 +16,11 @@ export async function newLead(input) {
     `INSERT INTO leads (company,contact,email,need,budget,source) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [input.company, input.contact || null, input.email || null, input.need, input.budget || null, input.source || "Manual"]);
   refresh("stats");
-  run(lead).catch(e => log("dia", `could not finish lead ${lead.company}: ${e.message}`, null, false));
+  run(lead).catch(e => problem(`could not finish lead ${lead.company}`, e));
   return lead;
 }
 
-async function run(lead) {
+export async function run(lead) {
   await status("kabir", `Capturing ${lead.company} (${lead.source})`);
   await log("kabir", `captured a lead from ${lead.source}: ${lead.company} needs ${lead.need}.`);
   await idle("kabir");
@@ -29,7 +30,7 @@ async function run(lead) {
   await status("meera", "Analysing requirement…");
   const kb = await context(lead.need);
   const r = await ask({
-    agent: "meera", tier: "fast",
+    agent: "meera", tier: "fast", need: ["score", "temperature"],
     system: COMPANY() + " You are Meera, requirement analyst. Score how good this lead is for us.",
     prompt: `Company knowledge:\n${kb}\n\nLead:\n${JSON.stringify({ company: lead.company, need: lead.need, budget_inr: lead.budget, source: lead.source })}\n\n` +
       `Return {"score":0-100,"temperature":"hot"|"warm"|"cold","summary":"2 sentences","scope":["module",...],` +
@@ -58,7 +59,7 @@ async function run(lead) {
   await handoff("meera", "sameer", "Hot lead");
   await status("sameer", "Reviewing hot lead…");
   const m = await ask({
-    agent: "sameer", tier: "fast",
+    agent: "sameer", tier: "fast", need: ["escalate"],
     system: COMPANY() + " You are Sameer, sales manager. Decide if this hot lead should go to Dia, the owner.",
     prompt: `Analyst report:\n${JSON.stringify(r)}\nClient budget: ${inr(lead.budget)}\nReturn {"escalate":true|false,"proposed_price_inr":number,"note":"1-2 sentences"}`,
     mock: () => ({ escalate: true, proposed_price_inr: r.estimate_inr, note: "Good fit, team has capacity." })
@@ -71,7 +72,7 @@ async function run(lead) {
   await handoff("sameer", "dia", "Escalation");
   await status("dia", `Reviewing ${lead.company}…`, false);
   const d = await ask({
-    agent: "dia", tier: "smart",
+    agent: "dia", tier: "smart", need: ["recommendation", "client_message"],
     system: COMPANY() + " You are Dia, the owner. Prepare a decision for the human director. Choose how to contact the client.",
     prompt: `Lead: ${JSON.stringify({ company: lead.company, contact: lead.contact, need: lead.need, budget: lead.budget })}\n` +
       `Analyst: ${JSON.stringify(r)}\nManager: ${JSON.stringify(m)}\n` +
@@ -107,6 +108,8 @@ onDecision("project", async (a, approved) => {
   await log("sameer", `created sale order ${so} and work order ${wo} for ${lead.company} (${inr(a.body.price)}).`);
   await idle("sameer");
   refresh("projects");
+  await handoff("sameer", "arjun", so);
+  draftInvoice(p.id, "advance").catch(e => problem(`could not draft the advance invoice for ${lead.company}`, e));
   await handoff("sameer", "neel", wo);
   await startEngineering(p.id);
 });

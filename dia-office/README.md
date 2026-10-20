@@ -9,6 +9,9 @@ Inveon Technologies' virtual office, run by **Dia**. AI agents work in HR, Sales
 | **Sales** | Lead (form, cold-call log or CRM webhook) → Kabir captures it → Meera writes the requirement report → Sameer, the sales manager, reviews it → Dia prepares a recommendation and the client message → **you approve** → the client is emailed, a sale order and work order are created |
 | **Engineering** | Neel writes a real build plan (stack, tasks, deploy) → Tara builds → you click *Testing → Deploying → Live* as the real work finishes |
 | **Marketing** | When a project goes Live, Pooja plans a campaign and Isha drafts a case study and LinkedIn post (drafts for you to review) |
+| **Support** | A ticket (form, help-desk webhook or "ticket from Acme: …" in chat) → Kavya reads company knowledge and drafts a reply → **you approve** → the client is emailed. Bugs are flagged to Tara |
+| **Finance** | When you approve a project, Arjun drafts a 50% advance invoice with 18% GST; at go-live he drafts the balance → **you approve** each before it is emailed → mark it paid when money arrives. The *Profit* tab shows this month's cash in, team billing and AI spend |
+| **Goals** | Give Dia several jobs in one message ("add lead X needs Y; ticket from Z: … then check yourself") and she lines up one button per team, plus *Do all* |
 | **HR** | Candidate → Asha writes the interview and task → humans answer on a link, AI-agent candidates are interviewed automatically → Asha scores the answers → Vikram, the reporting manager, reviews → **you approve** → Rohan emails the offer and company policies → the new member appears in the office and billing starts |
 
 Every AI call is recorded with its token count and cost. **AI spend** shows at the top, and AI pauses when it reaches `MONTHLY_AI_BUDGET_USD`.
@@ -77,14 +80,37 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | POST | `/api/leads`, `/api/webhooks/lead` | director key |
 | POST | `/api/candidates` | director key |
 | GET/POST | `/api/interview/:token` | the candidate (secret link) |
+| POST | `/api/tickets`, `/api/webhooks/ticket` `{customer, email, subject, message}`, `/api/tickets/:id/close` | director key |
+| POST | `/api/invoices/:id/paid` | director key |
+| GET | `/api/records/{leads,candidates,projects,decisions,spend,tickets,invoices,finance}` | director key |
+| POST | `/api/dia/chat`, `/api/dia/selfcheck`, `/api/dia/repair` | director key |
 | POST | `/api/approvals/:id` `{decision:"approve"\|"reject"}` | director key |
 | POST | `/api/projects/:id/stage` `{stage}` | director key |
 | POST | `/api/kb`, GET `/api/kb`, GET `/api/kb/search?q=` | director key |
 | GET | `/api/health`, POST `/api/health/retry` | anyone (setup status only, no data) |
 
+## Tests
+
+`npm test` starts the office in mock mode against a throwaway database and runs every flow end to end (lead to promoted project, AI hire, interview link, knowledge base, chat goals, self-check, support tickets, GST invoices). It **wipes** the database in `TEST_DATABASE_URL` (default `postgres://dia:dia@localhost:5432/dia_test`), so point it at an empty test database only. GitHub Actions runs the same tests on every pull request.
+
+## Database changes
+
+SQL files in `src/migrations/` run once each, in order, on startup. To change the database, add a new numbered file such as `004_add_x.sql`; never edit one that already ran.
+
+## Privacy
+
+Anyone who opens the page sees the office floor and counts. Client names, decisions, money and the activity feed are only sent after the director key is entered, over the API and the live updates. Interview links expire after 14 days, and wrong director keys are rate-limited.
+
 ## Deploying
-Run it on one small server (EC2 or a VPS) behind nginx with HTTPS, using `npm start` under pm2 or systemd. Use RDS or the same server for Postgres. Keep `ADMIN_TOKEN` secret, and put the office behind HTTPS before using it with real candidates.
+
+`docker build -t dia-office .` builds one small image (health check included). To run the database and the office together on one machine: `docker compose --profile app up -d --build`.
+
+For AWS (EC2 + RDS or Neon + Bedrock + SES, HTTPS with Caddy), follow **[docs/DEPLOY-AWS.md](docs/DEPLOY-AWS.md)** step by step. Keep `ADMIN_TOKEN` secret and use HTTPS before real clients or candidates see the office.
 
 ## Honest limits
 - The AI plans, analyses, scores and writes drafts. Building and deploying real client software is still done by your developers (or Claude Code). The office tracks it when you move the stage.
 - AI interview scores support a person's decision; they don't replace it. Keep a human approving every hire.
+- There is one director key. Separate logins and roles for several people are not built yet.
+- Dia's face in the chat is her portrait with blinking, breathing and mouth movement layered on top; the 3D Dia on the floor is a stylised model dressed to match. A photoreal 3D head would need a dedicated avatar service.
+- Floor 2 departments start empty: their desks fill as you hire into them. The diners in the canteen are decoration.
+- The Python agents in `dia-ai/` are a separate prototype; the office does not call them.

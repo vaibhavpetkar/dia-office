@@ -1,3 +1,5 @@
+# Database only:            docker compose up -d
+# Database and the office:  docker compose --profile app up -d --build   (then open http://localhost:8080)
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -9,5 +11,23 @@ services:
       - "5432:5432"
     volumes:
       - dia-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dia"]
+      interval: 5s
+      retries: 10
+  office:
+    profiles: ["app"]
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://dia:dia@db:5432/dia
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./fixes:/app/fixes
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 volumes:
   dia-db:

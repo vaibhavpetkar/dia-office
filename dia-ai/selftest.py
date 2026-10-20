@@ -44,3 +44,4 @@ with mock.patch("boto3.client", return_value=fake_bedrock):
 
 print("\nAll good! Next: fill .env, run check_setup.py, then main.py" if not failures
       else f"\n{failures} check(s) failed - send this output to Claude.")
+raise SystemExit(1 if failures else 0)

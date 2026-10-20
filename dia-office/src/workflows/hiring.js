@@ -5,7 +5,7 @@ import { q, one } from "../db.js";
 import { ask, seeded } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh } from "../events.js";
+import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { requestApproval, onDecision } from "./approvals.js";
 import { sendMail } from "../mail.js";
 
@@ -14,14 +14,14 @@ export async function newCandidate(input) {
   const c = await one(
     `INSERT INTO candidates (name,email,role,dept,kind,resume,monthly_cost,token) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [input.name, input.email || null, input.role, input.dept, input.kind === "ai" ? "ai" : "human", input.resume || "", input.monthly_cost || 0, token]);
-  prepare(c).catch(e => log("dia", `could not start interview for ${c.name}: ${e.message}`, null, false));
+  prepare(c).catch(e => problem(`could not start interview for ${c.name}`, e));
   return c;
 }
 
-async function prepare(c) {
+export async function prepare(c) {
   await status("asha", `Preparing interview for ${c.name}`);
   const iv = await ask({
-    agent: "asha", tier: "fast",
+    agent: "asha", tier: "fast", need: ["questions", "task"],
     system: COMPANY() + " You are Asha, hiring agent. Write a fair, practical interview.",
     prompt: `Role: ${c.role}. Candidate type: ${c.kind}. Resume/notes: ${c.resume || "none"}\n` +
       `Return {"questions":["5 questions"],"task":"one practical task answerable in writing within 30 minutes"}`,
@@ -35,7 +35,7 @@ async function prepare(c) {
   if (c.kind === "ai") {
     await status("asha", `Interviewing AI agent ${c.name}…`);
     const ans = await ask({
-      agent: "asha", tier: "fast", maxTokens: 1500,
+      agent: "asha", tier: "fast", maxTokens: 1500, need: ["answers"],
       system: `You are ${c.name}, an AI agent applying for the role of ${c.role} at ${process.env.COMPANY_NAME}. Answer honestly and concretely.`,
       prompt: `Questions: ${JSON.stringify(iv.questions)}\nTask: ${iv.task}\nReturn {"answers":["one per question"],"task_answer":"..."}`,
       mock: () => ({ answers: iv.questions.map(() => "I would approach this step by step and report progress daily."), task_answer: "Day 1: learn the stack. Day 2-5: ship a small fix." })
@@ -48,9 +48,16 @@ async function prepare(c) {
   }
 }
 
+const LINK_DAYS = 14;
+function expired(c) {
+  if (c.status === "interview_sent" && Date.now() - new Date(c.created_at).getTime() > LINK_DAYS * 86400000)
+    throw Object.assign(new Error(`This interview link expired after ${LINK_DAYS} days. Please ask HR for a new one.`), { status: 410 });
+}
+
 export async function getInterview(token) {
-  const c = await one("SELECT name, role, questions, status FROM candidates WHERE token=$1", [token]);
+  const c = await one("SELECT name, role, questions, status, created_at FROM candidates WHERE token=$1", [token]);
   if (!c) throw Object.assign(new Error("Interview link not found."), { status: 404 });
+  expired(c);
   return c;
 }
 
@@ -58,16 +65,17 @@ export async function submitAnswers(token, answers, taskAnswer) {
   const c = await one("SELECT * FROM candidates WHERE token=$1", [token]);
   if (!c) throw Object.assign(new Error("Interview link not found."), { status: 404 });
   if (c.status !== "interview_sent") throw Object.assign(new Error("This interview was already submitted."), { status: 409 });
+  expired(c);
   await q("UPDATE candidates SET answers=$2, status='evaluating' WHERE id=$1", [c.id, { answers, task: taskAnswer }]);
-  evaluate(c.id).catch(e => log("dia", `could not evaluate ${c.name}: ${e.message}`, null, false));
+  evaluate(c.id).catch(e => problem(`could not evaluate ${c.name}`, e));
 }
 
-async function evaluate(id) {
+export async function evaluate(id) {
   const c = await one("SELECT * FROM candidates WHERE id=$1", [id]);
   await status("asha", `Scoring ${c.name}…`);
   const policy = await context(`hiring criteria ${c.role}`, 2);
   const e = await ask({
-    agent: "asha", tier: "smart",
+    agent: "asha", tier: "smart", need: ["interview_score", "task_score", "pass"],
     system: COMPANY() + " You are Asha, hiring agent. Score fairly on the answers only; ignore name, gender, religion, caste, age.",
     prompt: `Hiring guidance:\n${policy}\n\nRole: ${c.role}\nQuestions: ${JSON.stringify(c.questions)}\nAnswers: ${JSON.stringify(c.answers)}\n` +
       `Return {"interview_score":0-100,"task_score":0-100,"pass":true|false,"strengths":["..."],"concerns":["..."],"summary":"2 sentences"}. Pass needs both scores >= 65.`,
@@ -85,7 +93,7 @@ async function evaluate(id) {
   await handoff("asha", "vikram", "Scorecard");
   await status("vikram", `Reviewing ${c.name}…`);
   const v = await ask({
-    agent: "vikram", tier: "fast",
+    agent: "vikram", tier: "fast", need: ["recommend"],
     system: COMPANY() + " You are Vikram, reporting manager.",
     prompt: `Candidate ${c.name} for ${c.role}. Evaluation: ${JSON.stringify(e)}\nReturn {"recommend":true|false,"first_tasks":["3 tasks for week one"],"note":"1 sentence"}`,
     mock: () => ({ recommend: true, first_tasks: ["Set up accounts", "Shadow a live project", "Ship one small task"], note: "Ready to contribute." })

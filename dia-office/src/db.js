@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
 import pg from "pg";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { AGENTS } from "./agents.js";
 
-dotenv.config();
+dotenv.config({ path: process.env.DOTENV_CONFIG_PATH });
 
 const makePool = () => {
   const p = new pg.Pool({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 8000 });
@@ -16,16 +16,30 @@ export let pool = makePool();
 // Re-read .env so a DATABASE_URL fixed while the office is running is picked up without a restart.
 export function reloadDatabaseUrl() {
   const before = process.env.DATABASE_URL;
-  dotenv.config({ override: true });
+  dotenv.config({ path: process.env.DOTENV_CONFIG_PATH, override: true });
   if (process.env.DATABASE_URL !== before) { pool.end().catch(() => {}); pool = makePool(); }
 }
 export const q = (text, params) => pool.query(text, params);
 export const one = async (text, params) => (await pool.query(text, params)).rows[0];
 
+// Numbered SQL files in src/migrations run once each, in order, and are recorded in schema_migrations.
+// To change the database, add a new file (e.g. 004_add_x.sql); never edit one that already ran.
 export async function migrate() {
   const dim = parseInt(process.env.EMBED_DIM || "768", 10);
-  const sql = readFileSync(new URL("./schema.sql", import.meta.url), "utf8").replace("{{EMBED_DIM}}", dim);
-  await pool.query(sql);
+  const dir = new URL("./migrations/", import.meta.url);
+  await pool.query("CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, run_at TIMESTAMPTZ NOT NULL DEFAULT now())");
+  const done = new Set((await pool.query("SELECT name FROM schema_migrations")).rows.map(r => r.name));
+  for (const name of readdirSync(dir).filter(f => /^\d+_.*\.sql$/.test(f)).sort()) {
+    if (done.has(name)) continue;
+    const sql = readFileSync(new URL(name, dir), "utf8").replaceAll("{{EMBED_DIM}}", dim);
+    const c = await pool.connect();
+    try {
+      await c.query("BEGIN"); await c.query(sql);
+      await c.query("INSERT INTO schema_migrations (name) VALUES ($1)", [name]);
+      await c.query("COMMIT");
+    } catch (e) { await c.query("ROLLBACK").catch(() => {}); throw Object.assign(e, { message: `Migration ${name} failed: ${e.message}` }); }
+    finally { c.release(); }
+  }
   for (const a of AGENTS) {
     await q(
       `INSERT INTO agents (id,name,role,dept,kind,monthly_cost,look) VALUES ($1,$2,$3,$4,'ai',$5,$6)
