@@ -2,7 +2,7 @@
 // Human candidates answer on /interview.html?t=<token>. AI-agent candidates are interviewed automatically.
 import { randomBytes } from "node:crypto";
 import { q, one } from "../db.js";
-import { ask } from "../llm.js";
+import { ask, seeded } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
 import { status, idle, log, handoff, refresh } from "../events.js";
@@ -71,7 +71,7 @@ async function evaluate(id) {
     system: COMPANY() + " You are Asha, hiring agent. Score fairly on the answers only; ignore name, gender, religion, caste, age.",
     prompt: `Hiring guidance:\n${policy}\n\nRole: ${c.role}\nQuestions: ${JSON.stringify(c.questions)}\nAnswers: ${JSON.stringify(c.answers)}\n` +
       `Return {"interview_score":0-100,"task_score":0-100,"pass":true|false,"strengths":["..."],"concerns":["..."],"summary":"2 sentences"}. Pass needs both scores >= 65.`,
-    mock: () => { const a = 55 + Math.floor(Math.random() * 40), b = 55 + Math.floor(Math.random() * 40);
+    mock: () => { const rnd = seeded(c.name + c.role), a = 55 + Math.floor(rnd() * 40), b = 55 + Math.floor(rnd() * 40);
       return { interview_score: a, task_score: b, pass: a >= 65 && b >= 65, strengths: ["Clear communication"], concerns: ["Limited detail"], summary: "Solid candidate." }; }
   });
   await q("UPDATE candidates SET evaluation=$2, status=$3 WHERE id=$1", [c.id, e, e.pass ? "passed" : "failed"]);
@@ -114,7 +114,7 @@ onDecision("hire", async (a, approved) => {
     `Hello ${c.name},\n\nWe're happy to offer you the role of ${c.role}.\n\nCompany policies:\n${policies}\n\nRegards,\nRohan, HR`);
   const agentId = "c" + c.id;
   const skins = [0, 1, 2, 3, 4, 5], styles = ["short", "long", "bun", "curly"], shirts = ["#2b6cb0", "#2f8a4c", "#7b4bb7", "#c2264b", "#d9930f", "#3a7d8c"];
-  const pick = x => x[Math.floor(Math.random() * x.length)];
+  const rnd = seeded(c.name), pick = x => x[Math.floor(rnd() * x.length)];
   await q(`INSERT INTO agents (id,name,role,dept,kind,monthly_cost,look) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
     [agentId, c.name, c.role, c.dept, c.kind, c.monthly_cost, { skin: pick(skins), style: pick(styles), shirt: pick(shirts) }]);
   await q("UPDATE candidates SET status='hired' WHERE id=$1", [c.id]);

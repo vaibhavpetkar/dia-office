@@ -3,10 +3,11 @@ import express from "express";
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { timingSafeEqual } from "node:crypto";
-import { q, one, migrate } from "./db.js";
+import { fileURLToPath } from "node:url";
+import { q, one, migrate, dbHint, reloadDatabaseUrl } from "./db.js";
 import { attach } from "./events.js";
 import { monthSpendUSD } from "./llm.js";
-import { addDoc, search } from "./kb.js";
+import { addDoc, search, listDocs } from "./kb.js";
 import { decide } from "./workflows/approvals.js";
 import { newLead } from "./workflows/sales.js";
 import { newCandidate, getInterview, submitAnswers } from "./workflows/hiring.js";
@@ -14,15 +15,46 @@ import { setStage, STAGES } from "./workflows/engineering.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
-app.use(express.static(new URL("../public", import.meta.url).pathname));
+// fileURLToPath, not URL.pathname: pathname gives "/C:/..." on Windows and keeps %20 for spaces.
+app.use(express.static(fileURLToPath(new URL("../public", import.meta.url))));
 
 const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
   if (!e.status || e.status >= 500) console.error(e);
   res.status(e.status || 500).json({ error: e.message });
 });
 
+// ---- Setup status: the page shows a setup screen until the database is reachable ----
+const PLACEHOLDER_TOKEN = "change-me-to-a-long-random-string";
+const db = { ok: false, error: null, hint: null };
+async function connectDb() {
+  reloadDatabaseUrl();
+  try {
+    await migrate();
+    Object.assign(db, { ok: true, error: null, hint: null });
+  } catch (e) {
+    Object.assign(db, { ok: false, error: e.message || String(e.code || e), hint: dbHint(e) });
+    console.error(`Database not ready: ${db.error}\n  -> ${db.hint}`);
+  }
+  return db.ok;
+}
+const tokenState = () => !process.env.ADMIN_TOKEN ? "missing" : process.env.ADMIN_TOKEN === PLACEHOLDER_TOKEN ? "placeholder" : "ok";
+
+app.get("/api/health", (_req, res) => res.json({
+  db, admin_token: tokenState(), provider: process.env.LLM_PROVIDER || "mock",
+  ses: !!process.env.SES_FROM, platform: process.platform
+}));
+let retrying;
+app.post("/api/health/retry", async (_req, res) => {
+  if (!db.ok) await (retrying ??= connectDb().finally(() => (retrying = null)));
+  res.status(db.ok ? 200 : 503).json({ db });
+});
+app.use("/api", (_req, res, next) => db.ok ? next()
+  : res.status(503).json({ error: `Database not ready: ${db.hint}`, setup: true }));
+
 // Only the director (whoever holds ADMIN_TOKEN) can add work or make decisions.
 function admin(req, res, next) {
+  if (tokenState() !== "ok")
+    return res.status(401).json({ error: "ADMIN_TOKEN is not set in .env yet. Run npm run setup, then restart the office." });
   const want = Buffer.from(process.env.ADMIN_TOKEN || "");
   const got = Buffer.from((req.get("authorization") || "").replace(/^Bearer /, ""));
   if (!want.length || want.length !== got.length || !timingSafeEqual(want, got))
@@ -94,10 +126,12 @@ app.post("/api/kb", admin, wrap(async (req, res) => {
   need(req.body, ["title", "content"]);
   res.json({ chunks: await addDoc(req.body.title, req.body.content) });
 }));
+app.get("/api/kb", admin, wrap(async (_req, res) => res.json(await listDocs())));
 app.get("/api/kb/search", admin, wrap(async (req, res) => res.json(await search(String(req.query.q || ""), 5))));
 
-await migrate();
+await connectDb();
 const server = createServer(app);
 attach(new WebSocketServer({ server, path: "/ws" }));
 const port = parseInt(process.env.PORT || "8080", 10);
-server.listen(port, () => console.log(`Dia's office is open on http://localhost:${port} (AI: ${process.env.LLM_PROVIDER || "mock"})`));
+server.listen(port, () => console.log(`Dia's office is open on http://localhost:${port} (AI: ${process.env.LLM_PROVIDER || "mock"})` +
+  (db.ok ? "" : " - database not ready, the page will show setup steps")));

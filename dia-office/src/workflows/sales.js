@@ -1,6 +1,6 @@
 // Lead -> analysis -> manager -> Dia -> human approval -> sale order + work order -> Engineering
 import { q, one } from "../db.js";
-import { ask } from "../llm.js";
+import { ask, seeded } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
 import { status, idle, log, handoff, refresh } from "../events.js";
@@ -35,7 +35,7 @@ async function run(lead) {
       `Return {"score":0-100,"temperature":"hot"|"warm"|"cold","summary":"2 sentences","scope":["module",...],` +
       `"questions_for_client":["..."],"risks":["..."],"estimate_inr":number,"timeline_weeks":number}. ` +
       `Hot = clear need, realistic budget, we can deliver.`,
-    mock: () => { const s = 50 + Math.floor(Math.random() * 46); return { score: s, temperature: s >= 70 ? "hot" : s >= 55 ? "warm" : "cold",
+    mock: () => { const s = 50 + Math.floor(seeded(lead.company + lead.need)() * 46); return { score: s, temperature: s >= 70 ? "hot" : s >= 55 ? "warm" : "cold",
       summary: `${lead.company} wants ${lead.need}. Requirement is clear enough to quote.`, scope: ["Admin panel", "Customer app", "Payments"],
       questions_for_client: ["Who are the main users?", "Any existing system to integrate?"], risks: ["Scope may grow"],
       estimate_inr: lead.budget || 300000, timeline_weeks: 6 }; }

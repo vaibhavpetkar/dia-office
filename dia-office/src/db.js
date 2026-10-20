@@ -1,9 +1,24 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import pg from "pg";
 import { readFileSync } from "node:fs";
 import { AGENTS } from "./agents.js";
 
-export const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+dotenv.config();
+
+const makePool = () => {
+  const p = new pg.Pool({ connectionString: process.env.DATABASE_URL, connectionTimeoutMillis: 8000 });
+  // A dropped idle connection (common with free cloud databases) should not crash the office.
+  p.on("error", e => console.error("Database connection dropped:", e.message));
+  return p;
+};
+export let pool = makePool();
+
+// Re-read .env so a DATABASE_URL fixed while the office is running is picked up without a restart.
+export function reloadDatabaseUrl() {
+  const before = process.env.DATABASE_URL;
+  dotenv.config({ override: true });
+  if (process.env.DATABASE_URL !== before) { pool.end().catch(() => {}); pool = makePool(); }
+}
 export const q = (text, params) => pool.query(text, params);
 export const one = async (text, params) => (await pool.query(text, params)).rows[0];
 
@@ -18,4 +33,18 @@ export async function migrate() {
       [a.id, a.name, a.role, a.dept, a.cost, a.look]
     );
   }
+}
+
+// Turn a database error into a plain-English next step for the setup screen.
+export function dbHint(e) {
+  const where = (() => { try { return new URL(process.env.DATABASE_URL).host; } catch { return "the DATABASE_URL host"; } })();
+  if (!process.env.DATABASE_URL) return "DATABASE_URL is empty. Run npm run setup, or copy .env.example to .env and fill it in.";
+  if (e.code === "ECONNREFUSED") return `Nothing is listening at ${where}. Start Postgres (Docker, a local install or WSL), or point DATABASE_URL at a free cloud database such as Neon or Supabase.`;
+  if (e.code === "ENOTFOUND" || e.code === "EAI_AGAIN") return `The host ${where} could not be found. Check the DATABASE_URL in .env for typos.`;
+  if (e.code === "28P01" || e.code === "28000") return "The database rejected the username or password in DATABASE_URL.";
+  if (e.code === "3D000") return "The database named in DATABASE_URL does not exist yet. Create it, or use the one your provider gave you.";
+  if (/extension "vector"/i.test(e.message)) return "This Postgres does not have the pgvector extension. Neon, Supabase and the pgvector/pgvector Docker image include it; a plain Windows install needs pgvector added separately.";
+  if (/ssl|certificate|no pg_hba/i.test(e.message)) return "The database needs an encrypted connection. Add ?sslmode=require to the end of DATABASE_URL.";
+  if (/timeout/i.test(e.message)) return `Connecting to ${where} timed out. Check your internet connection or firewall, and that the database is awake.`;
+  return "Check DATABASE_URL in .env, then press Try again.";
 }
