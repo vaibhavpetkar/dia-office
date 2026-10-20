@@ -1,5 +1,6 @@
 // Engineering plans the build; a person moves it through Building -> Testing -> Deploying -> Live.
-// Going Live hands the project to Marketing. Tara's website runs live in the sandbox from the start of Building.
+// Tara's website runs live in the sandbox from the start of Building. Testing hands the build to the QA department
+// (testing.js); going Live hands the project to Marketing.
 import { q, one } from "../db.js";
 import { ask } from "../llm.js";
 import { context } from "../kb.js";
@@ -7,6 +8,7 @@ import { COMPANY } from "../agents.js";
 import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { draftInvoice } from "./finance.js";
 import { buildSite } from "./sandbox.js";
+import { startTesting } from "./testing.js";
 
 export const STAGES = ["Won", "Work order", "Planning", "Building", "Testing", "Deploying", "Live", "Promoted"];
 
@@ -44,7 +46,10 @@ export async function setStage(projectId, stage) {
   const p = await one("UPDATE projects SET stage=$2 WHERE id=$1 RETURNING *", [projectId, stage]);
   if (!p) throw Object.assign(new Error("Project not found"), { status: 404 });
   refresh("projects"); refresh("stats");
-  if (stage === "Testing") { await idle("tara"); await log("tara", `finished building ${p.wo}; now testing.`); await status("tara", `Testing ${p.wo}`); }
+  if (stage === "Testing") {
+    await idle("tara"); await log("tara", `finished building ${p.wo}; handed it to QA.`);
+    startTesting(p.id).catch(e => e.status === 409 || problem(`QA could not start testing ${p.company}`, e));
+  }
   if (stage === "Deploying") { await idle("tara"); await handoff("tara", "om", "Release"); await status("om", `Deploying ${p.wo} to AWS`); }
   if (stage === "Live") {
     await idle("om"); await log("om", `${p.company} is live.`);

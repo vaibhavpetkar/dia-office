@@ -20,6 +20,7 @@ import { DEPTS } from "./agents.js";
 import { newTicket, closeTicket } from "./workflows/support.js";
 import { markPaid, profitAndLoss } from "./workflows/finance.js";
 import { buildSite, sitesFor, siteByToken, siteFile, withHelper, contentType, SANDBOX_CSP } from "./workflows/sandbox.js";
+import { startTesting, markManual } from "./workflows/testing.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -116,7 +117,7 @@ app.get("/api/state", wrap(async (req, res) => {
   const [agents, approvals, projects, activity, stats] = await Promise.all([
     q("SELECT id,name,role,dept,kind,monthly_cost,look,status,tasks_done FROM agents ORDER BY created_at"),
     director ? q("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at") : none,
-    director ? q(`SELECT id,company,need,value,so,wo,stage,plan,marketing,created_at,
+    director ? q(`SELECT id,company,need,value,so,wo,stage,plan,marketing,preview_url,created_at,
       (SELECT json_build_object('version',s.version,'token',s.token,'status',s.status,'ready',
          (SELECT token FROM sites r WHERE r.project_id=projects.id AND r.status='ready' ORDER BY version DESC LIMIT 1))
        FROM sites s WHERE s.project_id=projects.id ORDER BY version DESC LIMIT 1) AS site
@@ -187,6 +188,17 @@ app.post("/api/tickets/:id/close", admin, wrap(async (req, res) => res.json(awai
 // ---- Finance ----
 app.post("/api/invoices/:id/paid", admin, wrap(async (req, res) => res.json(await markPaid(parseInt(req.params.id, 10)))));
 
+// ---- Testing (QA) ----
+// Run Sneha's automated checks and Aditya's checklist again, optionally against a new preview/sandbox URL.
+app.post("/api/projects/:id/qa", admin, wrap(async (req, res) => {
+  const run = await startTesting(parseInt(req.params.id, 10), { url: req.body?.url });
+  res.status(202).json({ id: run.id, url: run.url });
+}));
+// A person ticks one hands-on check: {"index":0,"result":"pass"|"fail","note":"..."}
+app.post("/api/test-runs/:id/manual", admin, wrap(async (req, res) => {
+  res.json(await markManual(parseInt(req.params.id, 10), parseInt(req.body?.index, 10), req.body?.result, req.body?.note));
+}));
+
 // ---- Decisions & projects ----
 app.post("/api/approvals/:id", admin, wrap(async (req, res) => {
   res.json(await decide(parseInt(req.params.id, 10), req.body.decision === "approve"));
@@ -214,7 +226,7 @@ app.get("/api/records/candidates", admin, wrap(async (_req, res) => res.json((aw
      CASE WHEN status = 'interview_sent' AND kind = 'human' THEN token END AS token FROM candidates ORDER BY created_at DESC LIMIT 200`)).rows
   .map(({ token, ...c }) => ({ ...c, interview_link: token ? `${process.env.PUBLIC_URL}/interview.html?t=${token}` : null })))));
 app.get("/api/records/projects", admin, wrap(async (_req, res) => res.json((await q(
-  "SELECT id, company, need, value, so, wo, stage, plan, marketing, created_at FROM projects ORDER BY created_at DESC LIMIT 200")).rows)));
+  "SELECT id, company, need, value, so, wo, stage, plan, marketing, preview_url, created_at FROM projects ORDER BY created_at DESC LIMIT 200")).rows)));
 app.get("/api/records/decisions", admin, wrap(async (_req, res) => res.json((await q(
   "SELECT id, kind, title, status, created_at, decided_at FROM approvals ORDER BY created_at DESC LIMIT 200")).rows)));
 app.get("/api/records/spend", admin, wrap(async (_req, res) => res.json((await q(
@@ -226,6 +238,9 @@ app.get("/api/records/tickets", admin, wrap(async (_req, res) => res.json((await
   "SELECT id, customer, email, subject, message, category, priority, reply, status, created_at, answered_at FROM tickets ORDER BY created_at DESC LIMIT 200")).rows)));
 app.get("/api/records/invoices", admin, wrap(async (_req, res) => res.json((await q(
   "SELECT id, number, company, email, label, subtotal, gst, total, status, due_date, created_at, sent_at, paid_at FROM invoices ORDER BY id DESC LIMIT 200")).rows)));
+app.get("/api/records/tests", admin, wrap(async (_req, res) => res.json((await q(
+  `SELECT r.id, r.project_id, p.company, p.wo, r.url, r.status, r.verdict, r.cases, r.automated, r.manual, r.bugs, r.created_at, r.finished_at
+   FROM test_runs r JOIN projects p ON p.id = r.project_id ORDER BY r.id DESC LIMIT 100`)).rows)));
 app.get("/api/records/finance", admin, wrap(async (_req, res) => res.json(await profitAndLoss())));
 // Marketing drafts are only drafts until the director approves them for publishing.
 app.post("/api/projects/:id/marketing", admin, wrap(async (req, res) => {
