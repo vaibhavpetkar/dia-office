@@ -20,6 +20,11 @@ import { DEPTS } from "./agents.js";
 import { newTicket, closeTicket } from "./workflows/support.js";
 import { markPaid, profitAndLoss } from "./workflows/finance.js";
 import { buildSite, sitesFor, siteByToken, siteFile, withHelper, contentType, SANDBOX_CSP } from "./workflows/sandbox.js";
+import { startTesting, markManual } from "./workflows/testing.js";
+import { newRequest, getRequest, listRequests, runRequest } from "./workflows/requests.js";
+import { createKey, listKeys, revokeKey, checkKey } from "./apikeys.js";
+import { getMedia, mediaSig } from "./media.js";
+import { readFileSync } from "node:fs";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -28,7 +33,7 @@ app.use(express.static(fileURLToPath(new URL("../public", import.meta.url))));
 // three.js for the 3D office, served from node_modules so the page works offline.
 app.use("/vendor/three", express.static(fileURLToPath(new URL("../node_modules/three", import.meta.url))));
 
-const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
+const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(e => {
   if (!e.status || e.status >= 500) console.error(e);
   res.status(e.status || 500).json({ error: e.message });
 });
@@ -116,7 +121,7 @@ app.get("/api/state", wrap(async (req, res) => {
   const [agents, approvals, projects, activity, stats] = await Promise.all([
     q("SELECT id,name,role,dept,kind,monthly_cost,look,status,tasks_done FROM agents ORDER BY created_at"),
     director ? q("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at") : none,
-    director ? q(`SELECT id,company,need,value,so,wo,stage,plan,marketing,created_at,
+    director ? q(`SELECT id,company,need,value,so,wo,stage,plan,marketing,preview_url,created_at,
       (SELECT json_build_object('version',s.version,'token',s.token,'status',s.status,'ready',
          (SELECT token FROM sites r WHERE r.project_id=projects.id AND r.status='ready' ORDER BY version DESC LIMIT 1))
        FROM sites s WHERE s.project_id=projects.id ORDER BY version DESC LIMIT 1) AS site
@@ -187,6 +192,17 @@ app.post("/api/tickets/:id/close", admin, wrap(async (req, res) => res.json(awai
 // ---- Finance ----
 app.post("/api/invoices/:id/paid", admin, wrap(async (req, res) => res.json(await markPaid(parseInt(req.params.id, 10)))));
 
+// ---- Testing (QA) ----
+// Run Sneha's automated checks and Aditya's checklist again, optionally against a new preview/sandbox URL.
+app.post("/api/projects/:id/qa", admin, wrap(async (req, res) => {
+  const run = await startTesting(parseInt(req.params.id, 10), { url: req.body?.url });
+  res.status(202).json({ id: run.id, url: run.url });
+}));
+// A person ticks one hands-on check: {"index":0,"result":"pass"|"fail","note":"..."}
+app.post("/api/test-runs/:id/manual", admin, wrap(async (req, res) => {
+  res.json(await markManual(parseInt(req.params.id, 10), parseInt(req.body?.index, 10), req.body?.result, req.body?.note));
+}));
+
 // ---- Decisions & projects ----
 app.post("/api/approvals/:id", admin, wrap(async (req, res) => {
   res.json(await decide(parseInt(req.params.id, 10), req.body.decision === "approve"));
@@ -214,7 +230,7 @@ app.get("/api/records/candidates", admin, wrap(async (_req, res) => res.json((aw
      CASE WHEN status = 'interview_sent' AND kind = 'human' THEN token END AS token FROM candidates ORDER BY created_at DESC LIMIT 200`)).rows
   .map(({ token, ...c }) => ({ ...c, interview_link: token ? `${process.env.PUBLIC_URL}/interview.html?t=${token}` : null })))));
 app.get("/api/records/projects", admin, wrap(async (_req, res) => res.json((await q(
-  "SELECT id, company, need, value, so, wo, stage, plan, marketing, created_at FROM projects ORDER BY created_at DESC LIMIT 200")).rows)));
+  "SELECT id, company, need, value, so, wo, stage, plan, marketing, preview_url, created_at FROM projects ORDER BY created_at DESC LIMIT 200")).rows)));
 app.get("/api/records/decisions", admin, wrap(async (_req, res) => res.json((await q(
   "SELECT id, kind, title, status, created_at, decided_at FROM approvals ORDER BY created_at DESC LIMIT 200")).rows)));
 app.get("/api/records/spend", admin, wrap(async (_req, res) => res.json((await q(
@@ -226,6 +242,9 @@ app.get("/api/records/tickets", admin, wrap(async (_req, res) => res.json((await
   "SELECT id, customer, email, subject, message, category, priority, reply, status, created_at, answered_at FROM tickets ORDER BY created_at DESC LIMIT 200")).rows)));
 app.get("/api/records/invoices", admin, wrap(async (_req, res) => res.json((await q(
   "SELECT id, number, company, email, label, subtotal, gst, total, status, due_date, created_at, sent_at, paid_at FROM invoices ORDER BY id DESC LIMIT 200")).rows)));
+app.get("/api/records/tests", admin, wrap(async (_req, res) => res.json((await q(
+  `SELECT r.id, r.project_id, p.company, p.wo, r.url, r.status, r.verdict, r.cases, r.automated, r.manual, r.bugs, r.created_at, r.finished_at
+   FROM test_runs r JOIN projects p ON p.id = r.project_id ORDER BY r.id DESC LIMIT 100`)).rows)));
 app.get("/api/records/finance", admin, wrap(async (_req, res) => res.json(await profitAndLoss())));
 // Marketing drafts are only drafts until the director approves them for publishing.
 app.post("/api/projects/:id/marketing", admin, wrap(async (req, res) => {
@@ -238,16 +257,18 @@ app.post("/api/projects/:id/marketing", admin, wrap(async (req, res) => {
 }));
 
 // ---- Talk to Dia ----
-app.post("/api/dia/chat", admin, wrap(async (req, res) => {
+const talk = wrap(async (req, res) => {
   need(req.body, ["message"]);
   const history = Array.isArray(req.body.history) ? req.body.history.slice(-8).map(h => ({ role: h.role === "dia" ? "Dia" : "Director", text: String(h.text).slice(0, 1000) })) : [];
   res.json(await chat(String(req.body.message).slice(0, 2000), history, ["en", "hi", "mr"].includes(req.body.lang) ? req.body.lang : "en"));
-}));
-app.post("/api/dia/tts", admin, wrap(async (req, res) => {
+});
+const tts = wrap(async (req, res) => {
   need(req.body, ["text"]);
   if (limited("tts", req.ip, 40, 60 * 1000)) return res.status(429).json({ error: "Too many voice requests. Wait a minute." });
   res.set("content-type", "audio/mpeg").send(await speech(String(req.body.text).slice(0, 1500), req.body.lang));
-}));
+});
+app.post("/api/dia/chat", admin, talk);
+app.post("/api/dia/tts", admin, tts);
 app.post("/api/dia/selfcheck", admin, wrap(async (_req, res) => res.json(await selfCheck({ getHealth: health }))));
 app.post("/api/dia/repair", admin, wrap(async (req, res) => res.json(await proposeFix(req.body?.problem_id))));
 
@@ -258,6 +279,69 @@ app.post("/api/kb", admin, wrap(async (req, res) => {
 }));
 app.get("/api/kb", admin, wrap(async (_req, res) => res.json(await listDocs())));
 app.get("/api/kb/search", admin, wrap(async (req, res) => res.json(await search(String(req.query.q || ""), 5))));
+
+// ---- App API (v1): the phone and desktop apps, and anything else you connect ----
+// Works with the director key or an app key made in the Dia app (Settings → App keys). Described in /api/v1/openapi.json.
+const openapi = readFileSync(new URL("./openapi.json", import.meta.url), "utf8");
+const origins = (process.env.CORS_ORIGINS || "").split(",").map(s => s.trim()).filter(Boolean);
+app.use("/api/v1", (req, res, next) => {
+  const o = req.get("origin");
+  if (o && origins.includes(o)) res.set({ "access-control-allow-origin": o, vary: "origin",
+    "access-control-allow-headers": "authorization, content-type", "access-control-allow-methods": "GET, POST, DELETE" });
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+app.get("/api/v1/openapi.json", (_req, res) => res.type("json").send(openapi));
+const appUser = wrap(async (req, res, next) => {
+  if (isDirector(req)) { req.who = { role: "director", name: "Director" }; return next(); }
+  const sent = (req.get("authorization") || "").replace(/^Bearer\s*/, "").trim();
+  const k = sent.startsWith("dia_") ? await checkKey(sent) : null;
+  if (k) { req.who = { role: "app", name: k.name, key_id: k.id }; return next(); }
+  if (!sent.startsWith("dia_")) return admin(req, res, next);
+  if (limited("badkey", req.ip, 20, 10 * 60 * 1000)) return res.status(429).json({ error: "Too many wrong keys. Wait 10 minutes and try again." });
+  res.status(401).json({ error: "This app key isn't valid or was switched off. Make a new one in the Dia app under Settings.", key: "wrong" });
+});
+const v1 = express.Router();
+v1.get("/me", appUser, (req, res) => res.json({ ...req.who, provider: process.env.LLM_PROVIDER || "mock",
+  image: process.env.IMAGE_PROVIDER || "mock", tts: process.env.AZURE_SPEECH_KEY ? "azure" : "browser" }));
+v1.post("/chat", appUser, talk);
+v1.post("/tts", appUser, tts);
+v1.post("/requests", appUser, wrap(async (req, res) => {
+  need(req.body, ["brief"]);
+  const r = await newRequest({ brief: req.body.brief, source: req.who.role === "app" ? "app" : req.body.source });
+  res.status(202).json({ id: r.id, status: r.status });
+}));
+v1.get("/requests", appUser, wrap(async (_req, res) => res.json(await listRequests())));
+v1.get("/requests/:id", appUser, wrap(async (req, res) => res.json(await getRequest(parseInt(req.params.id, 10)))));
+v1.post("/requests/:id/retry", appUser, wrap(async (req, res) => {
+  const r = await getRequest(parseInt(req.params.id, 10));
+  if (r.status !== "failed") throw Object.assign(new Error("Only a request that failed can be retried."), { status: 409 });
+  runRequest(r.id).catch(e => console.error(e));
+  res.status(202).json({ id: r.id });
+}));
+// Pictures open in <img>, which can't send a key, so the link carries a signature instead.
+v1.get("/media/:id", wrap(async (req, res, next) => {
+  const id = parseInt(req.params.id, 10), sig = String(req.query.sig || "");
+  const signed = tokenState() === "ok" && sig.length === 32 && timingSafeEqual(Buffer.from(sig), Buffer.from(mediaSig(id)));
+  return signed ? send(id, res) : appUser(req, res, () => send(id, res).catch(next));
+}));
+async function send(id, res) {
+  const m = Number.isInteger(id) ? await getMedia(id) : null;
+  if (!m) return res.status(404).json({ error: "No such picture." });
+  res.set({ "content-type": m.mime, "cache-control": "private, max-age=86400", "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'" }).send(m.data);
+}
+v1.get("/approvals", appUser, wrap(async (_req, res) => res.json((await q(
+  "SELECT id, kind, title, body, created_at FROM approvals WHERE status='pending' ORDER BY created_at")).rows)));
+v1.post("/approvals/:id", appUser, wrap(async (req, res) => {
+  if (!["approve", "reject"].includes(req.body?.decision)) throw Object.assign(new Error('decision must be "approve" or "reject"'), { status: 400 });
+  res.json(await decide(parseInt(req.params.id, 10), req.body.decision === "approve"));
+}));
+// Only the director makes and switches off app keys.
+v1.get("/keys", admin, wrap(async (_req, res) => res.json(await listKeys())));
+v1.post("/keys", admin, wrap(async (req, res) => res.status(201).json(await createKey(req.body?.name))));
+v1.delete("/keys/:id", admin, wrap(async (req, res) => res.json(await revokeKey(parseInt(req.params.id, 10)))));
+app.use("/api/v1", v1);
 
 await connectDb();
 scheduleSelfCheck(health);

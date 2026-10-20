@@ -10,7 +10,7 @@ import { profitAndLoss } from "./workflows/finance.js";
 const inr = n => (n ? "₹" + Number(n).toLocaleString("en-IN") : "no budget given");
 
 async function snapshot() {
-  const [stats, approvals, projects, activity, leads, tickets, invoices, money] = await Promise.all([
+  const [stats, approvals, projects, activity, leads, tickets, invoices, money, tests] = await Promise.all([
     one(`SELECT (SELECT count(*) FROM leads)::int AS leads, (SELECT count(*) FROM leads WHERE temperature='hot')::int AS hot,
       (SELECT count(*) FROM projects)::int AS projects, (SELECT count(*) FROM projects WHERE stage IN ('Live','Promoted'))::int AS live,
       (SELECT count(*) FROM agents WHERE id <> 'dia')::int AS team, (SELECT COALESCE(sum(value),0) FROM projects)::bigint AS revenue`),
@@ -20,10 +20,12 @@ async function snapshot() {
     q("SELECT company, temperature, score, status FROM leads ORDER BY created_at DESC LIMIT 8"),
     q("SELECT id, customer, subject, category, priority, status FROM tickets WHERE status <> 'closed' ORDER BY created_at DESC LIMIT 8"),
     q("SELECT id, number, company, label, total, status, due_date FROM invoices WHERE status IN ('draft','sent') ORDER BY id DESC LIMIT 8"),
-    profitAndLoss()
+    profitAndLoss(),
+    q(`SELECT r.id, r.project_id, p.company, r.url, r.status, r.verdict, jsonb_array_length(r.bugs) AS bugs FROM test_runs r
+       JOIN projects p ON p.id = r.project_id ORDER BY r.id DESC LIMIT 6`)
   ]);
   return { stats, approvals: approvals.rows, projects: projects.rows, activity: activity.rows, leads: leads.rows,
-    tickets: tickets.rows, invoices: invoices.rows, money };
+    tickets: tickets.rows, invoices: invoices.rows, money, tests: tests.rows };
 }
 
 // Turn what the AI suggested into a request the page can send, or nothing if it isn't allowed.
@@ -36,6 +38,8 @@ function toAction(a, snap) {
   const p = snap.projects.find(x => x.id === Number(a.project_id));
   if (a.type === "stage" && p && STAGES.includes(a.stage))
     return { label: `Move ${p.company} to ${a.stage}`, method: "POST", path: `/api/projects/${p.id}/stage`, body: { stage: a.stage } };
+  if (a.type === "qa" && p && p.stage === "Testing")
+    return { label: `Ask QA to test ${p.company}${a.url ? ` at ${a.url}` : ""}`, method: "POST", path: `/api/projects/${p.id}/qa`, body: a.url ? { url: String(a.url) } : {} };
   if (a.type === "lead" && a.company && a.need)
     return { label: `Give Kabir the lead: ${a.company}`, method: "POST", path: "/api/leads",
       body: { company: String(a.company), need: String(a.need), budget: Number(a.budget) || null, email: a.email || null, contact: a.contact || null, source: "Dia chat" } };
@@ -50,6 +54,8 @@ function toAction(a, snap) {
   const inv = snap.invoices.find(x => x.id === Number(a.invoice_id));
   if (a.type === "paid" && inv && inv.status === "sent")
     return { label: `Mark ${inv.number} as paid`, method: "POST", path: `/api/invoices/${inv.id}/paid`, body: {} };
+  if (a.type === "request" && a.brief)
+    return { label: `Give the teams this job: ${String(a.brief).slice(0, 60)}${String(a.brief).length > 60 ? "…" : ""}`, method: "POST", path: "/api/v1/requests", body: { brief: String(a.brief).slice(0, 4000) } };
   if (a.type === "repair") return { label: "Draft a code fix for my latest error", method: "POST", path: "/api/dia/repair", body: {} };
   if (a.type === "selfcheck") return { label: "Run my self-check and fix what I can", method: "POST", path: "/api/dia/selfcheck", body: {} };
   return null;
@@ -61,6 +67,8 @@ function mockReply(msg, snap) {
   const ap = snap.approvals;
   if (/^(hi|hello|hey|namaste|namaskar)\b/.test(m) || /how are you/.test(m))
     return { reply: `Namaskar! I'm Dia. The office is running: ${s.team} people on the team, ${s.leads} leads, ${ap.length} decision${ap.length === 1 ? "" : "s"} waiting for you. What would you like to do?` };
+  if (/^(please\s+)?(research|make|create|generate|design|draw|build|write|plan|prepare|find out)\b/.test(m) && !/\blead\b|ticket/.test(m))
+    return { reply: "I'll read this, split it into jobs for the right teams and bring you the results. Press the button to start.", action: { type: "request", brief: msg.trim() } };
   if (/approv|decision|waiting|pending/.test(m)) {
     if (!ap.length) return { reply: "Nothing is waiting for you right now. I'll ask here before any hire or new project." };
     const first = ap[0];
@@ -87,6 +95,14 @@ function mockReply(msg, snap) {
     return { reply: `This month we received ${inr(f.received)} and spent about ${inr(f.costs)} on the team and AI, so profit is ${f.profit < 0 ? "minus " : ""}${inr(Math.abs(f.profit))}. ` +
       `${inr(f.outstanding)} is still to be collected${f.overdue ? `, ${inr(f.overdue)} of it overdue` : ""}.` };
   }
+  if (/\b(test|tests|testing|qa|tester|bugs?)\b/.test(m) && !/fix|repair/.test(m)) {
+    const url = msg.match(/https?:\/\/\S+/)?.[0], inTest = snap.projects.find(p => p.stage === "Testing" && m.includes(p.company.toLowerCase())) || snap.projects.find(p => p.stage === "Testing");
+    if (inTest && (url || /run|start|again|re-?test|check/.test(m)))
+      return { reply: `I'll ask Sneha and Aditya to test ${inTest.company}${url ? ` at ${url}` : ""}. Sneha runs the automated checks and Aditya prepares the hands-on checklist.`,
+        action: { type: "qa", project_id: inTest.id, url } };
+    if (!snap.tests.length) return { reply: "QA hasn't tested anything yet. When Tara marks a project as Testing, Sneha and Aditya pick it up. Give me a preview link and I'll ask them to run the checks." };
+    return { reply: "Latest tests: " + snap.tests.slice(0, 3).map(t => `${t.company} ${t.status.replace(/_/g, " ")}, ${t.bugs} bug${t.bugs === 1 ? "" : "s"}`).join("; ") + "." };
+  }
   if (/project/.test(m)) {
     if (!snap.projects.length) return { reply: "No projects yet. Approve a hot lead and Sameer will create the sale order and work order." };
     return { reply: "Projects: " + snap.projects.map(p => `${p.company} is ${p.stage} (${inr(p.value)})`).join("; ") + "." };
@@ -102,7 +118,7 @@ function mockReply(msg, snap) {
   if (/fix|repair|problem|error|broken|health|check|stuck/.test(m))
     return { reply: "I can check myself: the database, the AI, the budget, and any work that stopped half-way. Shall I run it and restart anything stuck?", action: { type: "selfcheck" } };
   if (/who are you|your name|what can you/.test(m) || /help/.test(m))
-    return { reply: "I'm Dia, I run Inveon's virtual office. Ask me about decisions, leads, projects, tickets, invoices or profit. Give me several jobs at once, separated by \"then\" or \";\", and I'll line them up for you." };
+    return { reply: "I'm Dia, I run Inveon's virtual office. Ask me about decisions, leads, projects, tests, tickets, invoices or profit. Give me several jobs at once, separated by \"then\" or \";\", and I'll line them up for you." };
   if (/team|hire|staff|people|candidate/.test(m))
     return { reply: `The team has ${s.team} members. To hire, press + New candidate, or pick "AI agent" and Asha will interview automatically.` };
   if (/how.*(office|doing|going)|status|summary|update|report/.test(m)) {
@@ -148,9 +164,9 @@ export async function chat(message, history = [], lang = "en") {
       prompt: `Office data:\n${JSON.stringify(snap)}\n\nCompany knowledge:\n${kb}\n\n` +
         `Conversation so far:\n${history.slice(-8).map(h => `${h.role}: ${h.text}`).join("\n")}\n\nDirector: ${message}\n\n` +
         `Return {"reply":"...","actions":[] of up to 5 actions, each one of: {"type":"approve"|"reject","id":number} | {"type":"stage","project_id":number,"stage":"${STAGES.join("|")}"} | ` +
-        `{"type":"lead","company":"...","need":"...","budget":number} | {"type":"candidate","name":"...","role":"...","dept":"${DEPTS.join("|")}","kind":"human|ai"} | ` +
+        `{"type":"qa","project_id":number,"url":"preview URL or omit"} | {"type":"lead","company":"...","need":"...","budget":number} | {"type":"candidate","name":"...","role":"...","dept":"${DEPTS.join("|")}","kind":"human|ai"} | ` +
         `{"type":"ticket","customer":"...","subject":"...","message":"..."} | {"type":"paid","invoice_id":number} | ` +
-        `{"type":"doc","title":"...","content":"..."} | {"type":"selfcheck"} | {"type":"repair"}}`,
+        `{"type":"doc","title":"...","content":"..."} | {"type":"request","brief":"the full requirement, for work the teams deliver: research, images, videos, builds, content"} | {"type":"selfcheck"} | {"type":"repair"}}`,
       mock: () => mockGoal(message, snap)
     });
   }

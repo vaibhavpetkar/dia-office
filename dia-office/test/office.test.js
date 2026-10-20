@@ -4,6 +4,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
 
@@ -232,6 +233,77 @@ test("Dia greets in Marathi and Hindi, and the cloud voice explains when it isn'
   assert.equal(tts.status, 400); assert.match(tts.body.error, /AZURE_SPEECH_KEY/);
 });
 
+test("QA tests a build at its preview URL, sends bugs back to Tara, then signs off the release", async () => {
+  // A tiny client site: one good link, one broken link (until "fixed"), and an image without alt text.
+  let fixed = false;
+  const site = createServer((req, res) => {
+    if (req.url === "/") return res.end(`<!doctype html><html lang="en"><head><title>Pune Bakes</title><meta name="viewport" content="width=device-width">
+      </head><body><a href="/menu">Menu</a><a href="/missing">Old page</a><img src="/a.png"></body></html>`);
+    if (req.url === "/menu" || (fixed && req.url === "/missing")) return res.end("ok");
+    res.statusCode = 404; res.end("nope");
+  });
+  await new Promise(r => site.listen(0, r));
+  const url = `http://localhost:${site.address().port}/`;
+  try {
+    const st = (await call("/api/state")).body;
+    assert.ok(st.agents.some(a => a.id === "sneha" && a.dept === "qa") && st.agents.some(a => a.id === "aditya" && a.dept === "qa"), "QA team has desks");
+    const p = await row(`INSERT INTO projects (company, need, value, wo, stage, plan) VALUES ('Pune Bakes', 'bakery website', 80000, 'WO-QA1', 'Building',
+      '{"modules":["Auth","Payments (Razorpay)"]}') RETURNING id`);
+    assert.equal((await call(`/api/projects/${p.id}/qa`, { method: "POST", body: { url } })).status, 409, "only projects in Testing are tested");
+
+    // Marking Testing hands the build to QA; with no preview URL yet nothing is run and Sneha says not ready.
+    await call(`/api/projects/${p.id}/stage`, { method: "POST", body: { stage: "Testing" } });
+    const first = await waitFor(() => row("SELECT * FROM approvals WHERE kind='qa_signoff' AND body->>'company'='Pune Bakes' AND status='pending'"), "first sign-off");
+    assert.equal(first.body.verdict, "not_ready"); assert.equal(first.body.url, null);
+    const run1 = await row("SELECT * FROM test_runs WHERE id=$1", [first.ref_id]);
+    assert.ok(run1.manual.some(m => m.area === "Sliders & carousels"), "hands-on checklist covers sliders");
+    assert.ok(run1.manual.some(m => m.area === "Payments"), "checklist follows the plan's modules");
+    assert.match(run1.cases.playwright, /@playwright\/test/);
+
+    // Run again with the preview URL: real checks find the broken link; the old sign-off is withdrawn.
+    assert.equal((await call(`/api/projects/${p.id}/qa`, { method: "POST", body: { url: "ftp://x" } })).status, 400);
+    assert.equal((await call(`/api/projects/${p.id}/qa`, { method: "POST", body: { url } })).status, 202);
+    const second = await waitFor(() => row("SELECT * FROM approvals WHERE kind='qa_signoff' AND body->>'url'=$1 AND status='pending'", [url]), "second sign-off");
+    assert.equal((await row("SELECT status FROM approvals WHERE id=$1", [first.id])).status, "rejected");
+    const run2 = await row("SELECT * FROM test_runs WHERE id=$1", [second.ref_id]);
+    const check = name => run2.automated.find(c => c.name === name);
+    assert.equal(check("Home page opens").result, "pass");
+    assert.equal(check("Page has a title").detail, "Pune Bakes");
+    assert.equal(check("No broken links").result, "fail"); assert.match(check("No broken links").detail, /\/missing \(404\)/);
+    assert.equal(check("Images have alt text").result, "warn");
+    assert.equal(check("Served over HTTPS").result, "warn", "a local preview isn't failed for plain http");
+    assert.equal(second.body.verdict, "not_ready");
+
+    // A person fails one hands-on check: it becomes a bug for Tara. Then the director sends the build back.
+    const tick = await call(`/api/test-runs/${run2.id}/manual`, { method: "POST", body: { index: 0, result: "fail", note: "banner jumps back" } });
+    assert.equal(tick.status, 200); assert.equal(tick.body.bugs, 2);
+    assert.equal((await call(`/api/test-runs/${run2.id}/manual`, { method: "POST", body: { index: 0, result: "maybe" } })).status, 400);
+    await call(`/api/approvals/${second.id}`, { method: "POST", body: { decision: "reject" } });
+    await waitFor(() => row("SELECT * FROM projects WHERE id=$1 AND stage='Building'", [p.id]), "back to build");
+    assert.equal((await row("SELECT status FROM test_runs WHERE id=$1", [run2.id])).status, "failed");
+
+    // Tara fixes it; Testing again re-tests at the saved preview URL, all links pass, and sign-off releases to deploy.
+    fixed = true;
+    await call(`/api/projects/${p.id}/stage`, { method: "POST", body: { stage: "Testing" } });
+    const third = await waitFor(() => row("SELECT * FROM approvals WHERE kind='qa_signoff' AND body->>'url'=$1 AND status='pending' AND id > $2", [url, second.id]), "third sign-off");
+    assert.equal(third.body.verdict, "ready"); assert.equal(third.body.failed, 0);
+    await call(`/api/approvals/${third.id}`, { method: "POST", body: { decision: "approve" } });
+    await waitFor(() => row("SELECT * FROM projects WHERE id=$1 AND stage='Deploying'", [p.id]), "released to deploy");
+    assert.equal((await row("SELECT status FROM test_runs WHERE id=$1", [third.ref_id])).status, "passed");
+
+    const tests = await call("/api/records/tests");
+    assert.ok(tests.body.some(r => r.company === "Pune Bakes" && r.status === "passed"));
+    assert.equal((await call("/api/records/tests", { key: null })).status, 401);
+  } finally { site.close(); }
+});
+
+test("Dia asks QA to test a project in Testing", async () => {
+  await row("INSERT INTO projects (company, need, value, stage) VALUES ('Chat Testers', 'crm', 50000, 'Testing') RETURNING id");
+  const r = (await call("/api/dia/chat", { method: "POST", body: { message: "run tests for Chat Testers at https://preview.example.com" } })).body;
+  assert.match(r.action.path, /^\/api\/projects\/\d+\/qa$/);
+  assert.equal(r.action.body.url, "https://preview.example.com");
+});
+
 test("sslmode in DATABASE_URL becomes a verified TLS option without the pg warning", async () => {
   const { connectionOptions } = await import("../src/db.js");
   assert.deepEqual(connectionOptions("postgres://u:p@h/db?sslmode=require&channel_binding=require"),
@@ -277,4 +349,47 @@ test("Engineering's website runs live in the sandbox, isolated, and a change req
   assert.deepEqual(list.map(s => s.version), [2, 1]);
   assert.equal((await call(`/api/sandbox/${v1.token}`, { key: null })).body.latest, v2.body.token, "old link points to the newer version");
   assert.match(list[0].guide.changes.join(" "), /pricing page/);
+});
+
+test("Dia splits a request into department tasks and every team delivers", async () => {
+  const brief = "Research EV charging in Pune, make a poster, plan a 30-second reel, build a landing page and write a LinkedIn post";
+  const made = await call("/api/v1/requests", { method: "POST", body: { brief } });
+  assert.equal(made.status, 202);
+  const r = await waitFor(async () => { const x = (await call(`/api/v1/requests/${made.body.id}`)).body; return x.status === "done" && x; }, "request done");
+  assert.deepEqual(r.tasks.map(t => t.kind), ["research", "image", "video", "build", "content"]);
+  assert.ok(r.tasks.every(t => t.status === "done" && t.output && t.agent), "every task has an owner and a result");
+  assert.ok(r.tasks[0].output.sections.length >= 3);
+  assert.match(r.tasks[3].output.starter_html, /^<!doctype html>/i);
+  // Pictures open from a signed link without a key, and not without the signature.
+  const img = r.tasks[1].output;
+  const pic = await fetch(BASE + img.url);
+  assert.equal(pic.status, 200); assert.equal(pic.headers.get("content-type"), "image/svg+xml");
+  assert.match(pic.headers.get("content-security-policy"), /default-src 'none'/);
+  assert.equal((await fetch(`${BASE}/api/v1/media/${img.media_id}?sig=${"x".repeat(32)}`)).status, 401);
+  const listed = (await call("/api/v1/requests")).body.find(x => x.id === made.body.id);
+  assert.equal(listed.tasks_done, 5);
+  assert.equal((await call("/api/v1/requests", { method: "POST", body: { brief: "hi" } })).status, 400);
+});
+
+test("Dia offers to hand a job to the teams from chat", async () => {
+  const r = (await call("/api/v1/chat", { method: "POST", body: { message: "Research the tea market in Assam and make a poster" } })).body;
+  assert.equal(r.actions[0].path, "/api/v1/requests");
+  assert.match(r.actions[0].body.brief, /tea market/);
+});
+
+test("app keys: made by the director, work on the app API only, and can be switched off", async () => {
+  assert.equal((await call("/api/v1/openapi.json", { key: null })).body.openapi, "3.0.3");
+  assert.equal((await call("/api/v1/me", { key: null })).status, 401);
+  const k = (await call("/api/v1/keys", { method: "POST", body: { name: "Test phone" } })).body;
+  assert.match(k.key, /^dia_/);
+  const me = (await call("/api/v1/me", { key: k.key })).body;
+  assert.deepEqual([me.role, me.name], ["app", "Test phone"]);
+  assert.equal((await call("/api/v1/approvals", { key: k.key })).status, 200);
+  assert.equal((await call("/api/v1/chat", { method: "POST", key: k.key, body: { message: "hello" } })).status, 200);
+  assert.equal((await call("/api/v1/keys", { key: k.key })).status, 401, "an app key can't make more keys");
+  assert.equal((await call("/api/records/leads", { key: k.key })).status, 401, "nor open the office records");
+  const keys = (await call("/api/v1/keys")).body;
+  assert.ok(keys.some(x => x.id === k.id && x.prefix === k.key.slice(0, 8) && !("hash" in x)));
+  assert.equal((await call(`/api/v1/keys/${k.id}`, { method: "DELETE" })).status, 200);
+  assert.equal((await call("/api/v1/me", { key: k.key })).status, 401);
 });

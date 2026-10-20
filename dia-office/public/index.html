@@ -20,6 +20,7 @@
       <button class="btn primary" id="bLead">+ New lead</button>
       <button class="btn primary" id="bCand">+ New candidate</button>
       <button class="btn primary" id="bTicket">+ Support ticket</button>
+      <a class="btn" href="app.html" target="_blank" rel="noopener" title="Talk to Dia and give her jobs from your phone or computer">Dia app ↗</a>
     </div>
   </section>
 
@@ -47,7 +48,9 @@
           <button type="button" role="tab" data-rec="leads" aria-selected="true">Leads</button>
           <button type="button" role="tab" data-rec="candidates" aria-selected="false">Candidates</button>
           <button type="button" role="tab" data-rec="projects" aria-selected="false">Projects</button>
+          <button type="button" role="tab" data-rec="jobs" aria-selected="false">Jobs</button>
           <button type="button" role="tab" data-rec="decisions" aria-selected="false">Decisions</button>
+          <button type="button" role="tab" data-rec="tests" aria-selected="false">Tests</button>
           <button type="button" role="tab" data-rec="tickets" aria-selected="false">Tickets</button>
           <button type="button" role="tab" data-rec="invoices" aria-selected="false">Invoices</button>
           <button type="button" role="tab" data-rec="money" aria-selected="false">Profit</button>
@@ -147,6 +150,7 @@ const CORE=Object.keys(DEPTS);
 [["product","Product"],["design","UI/UX Design"],["qa","QA & Testing"],["data","Data & AI"],["cloud","Cloud & DevOps"],["security","Security"],["mobile","Mobile Apps"],["rnd","R&D Lab"],
  ["success","Customer Success"],["content","Content Studio"],["events","Events"],["partners","Partnerships"],["legal","Legal"],["ops","Operations"],["admin","Admin & Facilities"],["training","Training"]]
   .forEach(([k,name])=>DEPTS[k]={name,sub:"Floor 2 · open desks",floor2:true});
+DEPTS.qa.sub="Automated tests · hands-on & slider checks · release sign-off";
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const inr=n=>n?"₹"+Number(n).toLocaleString("en-IN"):"—";
 let S={agents:[],approvals:[],projects:[],activity:[],stats:{},stages:[]},selected="dia";
@@ -176,7 +180,7 @@ function renderFloor(){
       <div class="cabinRow"><button class="diaBig agent" id="ag-dia" data-id="dia" aria-label="Dia, virtual owner">${diaSVG()}<span class="bub"></span></button>
       <div class="diaSay"><div class="mr">नमस्कार! मी दिया.</div>
         <p>I run the office for Inveon. Every hire and every new project comes to you for the final yes.</p>
-        <div class="pipeline"><span>Lead → Analysis → Manager → Dia → You</span><span>Sale order → Work order → Build → Live → Marketing</span><span>Candidate → AI interview → Task → You → Onboard</span></div></div></div></div>`:`
+        <div class="pipeline"><span>Lead → Analysis → Manager → Dia → You</span><span>Sale order → Work order → Build → QA tests → Live → Marketing</span><span>Candidate → AI interview → Task → You → Onboard</span></div></div></div></div>`:`
     <div class="room" data-d="${k}"><header><h2>${d.name}</h2><span>${d.sub}</span></header><div class="desks" id="desks-${k}"></div></div>`).join("");
   for(const a of S.agents){
     if(a.id==="dia")continue;
@@ -221,7 +225,7 @@ function renderApprovals(){
   c.textContent=n;c.dataset.n=n;
   if(!S.director){box.innerHTML='<p class="empty">🔒 Unlock with the director key to see this.</p>';return}
   if(!n){box.innerHTML='<p class="empty">Nothing waiting. Dia will ask here before any hire or new project.</p>';return}
-  const KIND={hire:["Hiring","Hire","Reject"],project:["New project","Approve project","Decline"],code_fix:["Code fix","Approve fix","Discard"],ticket_reply:["Support reply","Send reply","I'll answer myself"],invoice:["Invoice","Send invoice","Cancel invoice"]};
+  const KIND={hire:["Hiring","Hire","Reject"],project:["New project","Approve project","Decline"],code_fix:["Code fix","Approve fix","Discard"],ticket_reply:["Support reply","Send reply","I'll answer myself"],invoice:["Invoice","Send invoice","Cancel invoice"],qa_signoff:["QA sign-off","Release to deploy","Send back to build"]};
   box.innerHTML=S.approvals.map(a=>{const [what,yes,no]=KIND[a.kind]||[a.kind,"Approve","Reject"];
     const detail=a.kind==="code_fix"?`<p>${esc(a.body.explanation)}</p><dl class="kv"><dt>file</dt><dd>${esc(a.body.file)}:${esc(a.body.line)}</dd><dt>error</dt><dd>${esc(a.body.error)}</dd><dt>confidence</dt><dd>${esc(a.body.confidence||"?")}</dd></dl>
       <pre class="rep diff"><span class="del">${esc(a.body.find)}</span>\n<span class="add">${esc(a.body.replace)}</span></pre><p class="note" style="margin:0">Approving opens a pull request for review. The running office is not changed.</p>`
@@ -229,6 +233,10 @@ function renderApprovals(){
       <p class="quote">${esc(a.body.message)}</p><pre class="rep">${esc(a.body.reply)}</pre>${a.body.sources?.length?`<p class="note" style="margin:0">Used: ${esc(a.body.sources.join(", "))}</p>`:""}`
       :a.kind==="invoice"?`<table class="inv"><tr><td>${esc(a.body.label)}${a.body.so?` · ${esc(a.body.so)}`:""}</td><td>${inr(a.body.subtotal)}</td></tr><tr><td>GST 18%</td><td>${inr(a.body.gst)}</td></tr>
       <tr class="tot"><td>Total · due ${esc(new Date(a.body.due_date).toLocaleDateString("en-IN"))}</td><td>${inr(a.body.total)}</td></tr></table><p class="note" style="margin:0">To ${esc(a.body.email||"no email on file, will be logged only")}</p>`
+      :a.kind==="qa_signoff"?`<dl class="kv"><dt>tested</dt><dd>${a.body.url?esc(a.body.url):"no preview URL, nothing was run"}</dd>
+      <dt>automated</dt><dd>${a.body.passed} passed · ${a.body.failed} failed · ${a.body.warnings} warnings</dd><dt>test cases</dt><dd>${a.body.cases} written</dd>
+      <dt>hands-on</dt><dd>${a.body.manual_open} checks for a person to tick (Records → Tests)</dd><dt>Sneha says</dt><dd>${a.body.verdict==="ready"?"Ready to release":"Not ready yet"}</dd></dl>
+      ${a.body.bugs?.length?`<pre class="rep">${esc(a.body.bugs.join("\n"))}</pre>`:""}<p class="note" style="margin:0">Send back and Tara gets the bug list; release and Om deploys it.</p>`
       :`${fmtBody(a.body)}${a.body.client_message?`<p><i>Message to client:</i> ${esc(a.body.client_message)}</p>`:""}`;
     return `<div class="appr"><span class="who">Dia asks · ${what}</span><b>${esc(a.title)}</b>${detail}
     <div class="row"><button class="btn yes" data-ap="${a.id}" data-d="approve">${yes}</button>
@@ -239,7 +247,7 @@ document.getElementById("approvals").addEventListener("click",async e=>{
   try{await api(`/api/approvals/${b.dataset.ap}`,{method:"POST",body:JSON.stringify({decision:b.dataset.d})})}
   catch(err){const m=document.getElementById("apm"+b.dataset.ap);m.textContent=err.message;m.classList.add("err")}
 });
-const stageCol={Won:"sales","Work order":"sales",Planning:"eng",Building:"eng",Testing:"eng",Deploying:"eng",Live:"ok",Promoted:"mkt"};
+const stageCol={Won:"sales","Work order":"sales",Planning:"eng",Building:"eng",Testing:"qa",Deploying:"eng",Live:"ok",Promoted:"mkt"};
 function renderProjects(){
   const box=document.getElementById("projects");document.getElementById("projCount").textContent=S.projects.length;
   if(!S.director){box.innerHTML='<p class="empty">🔒 Unlock with the director key to see this.</p>';return}
@@ -252,13 +260,18 @@ function renderProjects(){
       ${p.plan?`<details><summary style="font-size:.76rem;color:var(--peacock);cursor:pointer">Build plan</summary><pre class="rep">${esc(planText(p.plan))}</pre></details>`:""}
       ${p.marketing?`<details><summary style="font-size:.76rem;color:var(--peacock);cursor:pointer">Marketing drafts</summary><pre class="rep">${esc(JSON.stringify(p.marketing,null,2))}</pre></details>`:""}
       ${sandboxLink(p.site)}
-      ${next?`<button class="btn" data-pj="${p.id}" data-st="${next}">Mark as ${next}</button>`:""}</div>`}).join("");
+      ${p.stage==="Testing"?`<div class="qa"><input type="url" placeholder="Preview / sandbox URL" aria-label="Preview URL for ${esc(p.company)}" value="${esc(p.preview_url||"")}" id="qaUrl${p.id}">
+        <button class="btn" data-qa="${p.id}">Run tests</button></div>`:""}
+      ${next?`<button class="btn" data-pj="${p.id}" data-st="${next}">${next==="Deploying"?"Skip QA, mark as Deploying":`Mark as ${next}`}</button>`:""}</div>`}).join("");
 }
 // Tara's website for the project, running live in the sandbox.
 const sandboxLink=s=>!s?"":s.ready?`<a class="btn sbx" href="/sandbox.html?s=${encodeURIComponent(s.status==="building"?s.ready:s.token)}" target="_blank" rel="noopener">▶ Open live sandbox${s.status==="ready"?` · v${s.version}`:""}</a>${s.status==="building"?` <span class="sbnote">Tara is building v${s.version}…</span>`:""}`
   :s.status==="building"?`<span class="sbnote">Tara is building the website for the sandbox…</span>`:`<span class="sbnote">The sandbox build failed. Ask Dia to check.</span>`;
 const planText=p=>`Stack: ${(p.stack||[]).join(", ")}\n${p.architecture||""}\n\nTasks:\n${(p.tasks||[]).map(t=>`- ${t.title} (${t.owner}, ${t.days}d)`).join("\n")}\n\nDeploy: ${p.deploy||""}\nRisks: ${(p.risks||[]).join("; ")}`;
 document.getElementById("projects").addEventListener("click",async e=>{
+  const t=e.target.closest("[data-qa]");
+  if(t){t.disabled=true;const url=document.getElementById("qaUrl"+t.dataset.qa).value.trim();
+    try{await api(`/api/projects/${t.dataset.qa}/qa`,{method:"POST",body:JSON.stringify(url?{url}:{})});t.textContent="Testing…"}catch(err){t.textContent=err.message;t.disabled=false}return}
   const b=e.target.closest("[data-pj]");if(!b)return;b.disabled=true;
   try{await api(`/api/projects/${b.dataset.pj}/stage`,{method:"POST",body:JSON.stringify({stage:b.dataset.st})})}catch(err){b.textContent=err.message;b.disabled=false}
 });
@@ -424,6 +437,7 @@ const recBody=document.getElementById("recBody");
 const when=t=>t?new Date(t).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
 const pill=(t,c)=>`<span class="pill" style="--c:var(--${c})">${esc(t)}</span>`;
 const tempCol={hot:"kumkum",warm:"marigold",cold:"eng"},statCol={pending:"marigold",approved:"ok",rejected:"kumkum",hired:"ok",passed:"ok",failed:"kumkum",won:"ok",declined:"kumkum",
+  running:"eng",awaiting_signoff:"marigold",stopped:"dia",pass:"ok",fail:"kumkum",warn:"marigold",
   new:"eng",awaiting_approval:"marigold",answered:"ok",needs_you:"kumkum",closed:"dia",draft:"marigold",sent:"eng",paid:"ok",cancelled:"kumkum"};
 function table(cols,rows,detail){
   if(!rows.length)return'<p class="empty">Nothing here yet.</p>';
@@ -443,7 +457,22 @@ const REC={
     rows,r=>`${r.plan?`<h4>Build plan</h4><pre class="rep">${esc(planText(r.plan))}</pre>`:""}${r.marketing?`<h4>Marketing drafts</h4>
       <p><b>${esc(r.marketing.content?.title||"")}</b></p><p>${esc(r.marketing.content?.case_study||"")}</p><p><i>LinkedIn:</i> ${esc(r.marketing.content?.linkedin_post||"")}</p>
       ${r.marketing.review?"":`<div class="row"><button type="button" class="btn yes" data-mk="${r.id}" data-d="approve">Approve for publishing</button><button type="button" class="btn no" data-mk="${r.id}" data-d="reject">Ask Isha to rewrite</button></div>`}`:""}`||'<p class="empty">No plan yet.</p>')},
+  jobs:{path:"/api/v1/requests",render:rows=>table([["Job",r=>`<b>${esc(r.title||"Planning…")}</b><br><small>${esc(r.brief.slice(0,140))}</small>`],
+    ["Tasks done",r=>`${r.tasks_done} / ${r.tasks}`],["Status",r=>pill(r.status,{planning:"marigold",working:"eng",done:"ok",failed:"kumkum"}[r.status]||"eng")],["From",r=>esc(r.source)],["Asked",r=>when(r.created_at)],
+    ["",r=>`<a class="btn" href="app.html#job=${r.id}" target="_blank" rel="noopener">Open results</a>`]],rows)+
+    '<p class="note">Tell Dia what you need ("research … and make a poster and a reel"). She splits it into jobs for the teams; results open in the Dia app.</p>'},
   decisions:{path:"/api/records/decisions",render:rows=>table([["Decision",r=>esc(r.title)],["Kind",r=>esc(r.kind.replace("_"," "))],["Result",r=>pill(r.status,statCol[r.status]||"eng")],["Asked",r=>when(r.created_at)],["Decided",r=>when(r.decided_at)]],rows)},
+  tests:{path:"/api/records/tests",render:rows=>table([["Project",r=>`<b>${esc(r.company)}</b><br><small class="mono">${esc(r.wo||"")}</small>`],
+    ["Tested at",r=>r.url?`<span class="mono">${esc(r.url)}</span>`:"<small>no preview URL</small>"],
+    ["Automated",r=>r.automated?`${r.automated.filter(c=>c.result==="pass").length} ✓ · ${r.automated.filter(c=>c.result==="fail").length} ✗`:"…"],
+    ["Hands-on",r=>r.manual?`${r.manual.filter(m=>m.result).length} / ${r.manual.length} done`:"…"],["Bugs",r=>r.bugs.length],
+    ["Status",r=>pill(r.status.replace(/_/g," "),statCol[r.status]||"eng")],["Started",r=>when(r.created_at)]],
+    rows,r=>`${r.automated?.length?`<h4>Sneha's automated checks</h4><ul class="checks">${r.automated.map(c=>`<li>${pill(c.result,statCol[c.result])}<span>${esc(c.name)}</span>${c.detail?`<small>${esc(c.detail)}</small>`:""}</li>`).join("")}</ul>`:""}
+      ${r.manual?`<h4>Aditya's hands-on checklist</h4><ul class="checks">${r.manual.map((m,i)=>`<li>${m.result?pill(m.result,statCol[m.result]):pill("to do","eng")}<span><b>${esc(m.area)}:</b> ${esc(m.check)}</span><small>${esc(m.device)}${m.note?` · ${esc(m.note)}`:""}</small>
+        ${["running","awaiting_signoff"].includes(r.status)?`<span class="row"><button type="button" class="btn yes" data-mt="${r.id}" data-i="${i}" data-r="pass">Pass</button><button type="button" class="btn no" data-mt="${r.id}" data-i="${i}" data-r="fail">Fail</button></span>`:""}</li>`).join("")}</ul>`:""}
+      ${r.bugs.length?`<h4>Bugs for Tara</h4><pre class="rep">${esc(r.bugs.map(b=>`[${b.severity}] ${b.title}${b.detail?` (${b.detail})`:""}`).join("\n"))}</pre>`:""}
+      ${r.cases?.test_cases?`<details><summary>${r.cases.test_cases.length} test cases</summary><pre class="rep">${esc(r.cases.test_cases.map(c=>`${c.id} [${c.type}] ${c.title}\n   ${c.steps}\n   → ${c.expected}`).join("\n"))}</pre></details>`:""}
+      ${r.cases?.playwright?`<details><summary>Playwright script</summary><pre class="rep">${esc(r.cases.playwright)}</pre></details>`:""}`)},
   tickets:{path:"/api/records/tickets",render:rows=>table([["Client",r=>`<b>${esc(r.customer)}</b><br><small>${esc(r.email||"")}</small>`],["Subject",r=>esc(r.subject)],
     ["Type",r=>esc(r.category||"…")],["Priority",r=>r.priority?pill(r.priority,r.priority==="high"?"kumkum":"eng"):"…"],["Status",r=>pill(r.status.replace(/_/g," "),statCol[r.status]||"eng")],["Received",r=>when(r.created_at)]],
     rows,r=>`<p class="quote">${esc(r.message)}</p>${r.reply?`<h4>Kavya's reply</h4><pre class="rep">${esc(r.reply.reply)}</pre>`:""}
@@ -464,7 +493,7 @@ const REC={
 };
 async function loadRecords(){
   document.querySelectorAll("[data-rec]").forEach(b=>b.setAttribute("aria-selected",b.dataset.rec===recTab));
-  if(!unlocked){recBody.innerHTML='<p class="empty">🔒 Unlock with the director key to see leads, candidates, projects, tickets, invoices, profit and AI spend.</p>';return}
+  if(!unlocked){recBody.innerHTML='<p class="empty">🔒 Unlock with the director key to see leads, candidates, projects, tests, tickets, invoices, profit and AI spend.</p>';return}
   if(!REC[recTab])recTab="leads";
   try{recBody.innerHTML=REC[recTab].render(await api(REC[recTab].path))}catch(e){recBody.innerHTML=`<p class="empty">${esc(e.message)}</p>`}
 }
@@ -474,6 +503,11 @@ recBody.onclick=async e=>{
   if(c){try{await navigator.clipboard.writeText(c.dataset.copy);c.textContent="Copied"}catch{c.outerHTML=`<input class="mono" readonly value="${esc(c.dataset.copy)}" onfocus="this.select()">`}return}
   const pd=e.target.closest("[data-paid]"),cl=e.target.closest("[data-close]");
   if(pd||cl){const b=pd||cl;b.disabled=true;try{await api(pd?`/api/invoices/${pd.dataset.paid}/paid`:`/api/tickets/${cl.dataset.close}/close`,{method:"POST",body:"{}"});loadRecords()}catch(err){b.textContent=err.message}return}
+  const mt=e.target.closest("[data-mt]");
+  if(mt){const note=mt.dataset.r==="fail"?prompt("What went wrong? (optional)")||"":"";mt.disabled=true;
+    try{await api(`/api/test-runs/${mt.dataset.mt}/manual`,{method:"POST",body:JSON.stringify({index:+mt.dataset.i,result:mt.dataset.r,note})});
+      const open=[...recBody.querySelectorAll("tr.detail")].findIndex(d=>!d.hidden);await loadRecords();
+      if(open>=0){const d=recBody.querySelectorAll("tr.detail")[open];d.hidden=false;d.previousElementSibling.classList.add("open")}}catch(err){mt.textContent=err.message}return}
   const m=e.target.closest("[data-mk]");
   if(m){m.disabled=true;try{await api(`/api/projects/${m.dataset.mk}/marketing`,{method:"POST",body:JSON.stringify({decision:m.dataset.d})});loadRecords()}catch(err){m.textContent=err.message}return}
   const tr=e.target.closest("tr.click");if(tr){const d=tr.nextElementSibling;d.hidden=!d.hidden;tr.classList.toggle("open",!d.hidden)}
