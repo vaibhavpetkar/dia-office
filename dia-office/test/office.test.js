@@ -154,3 +154,21 @@ test("code repair is refused in mock mode with a clear reason", async () => {
   assert.equal(r.status, 400);
   assert.match(r.body.error, /free test mode/);
 });
+
+test("records list leads, candidates, projects, decisions and spend for the director only", async () => {
+  for (const r of ["leads", "candidates", "projects", "decisions", "spend"]) {
+    const res = await call(`/api/records/${r}`);
+    assert.equal(res.status, 200, r); assert.ok(Array.isArray(res.body), r);
+    assert.equal((await call(`/api/records/${r}`, { key: null })).status, 401, r);
+  }
+  const human = (await call("/api/records/candidates")).body.find(c => c.name === "Meena");
+  assert.equal(human.interview_link, null, "link is hidden once the interview is submitted");
+});
+
+test("marketing drafts wait for the director's approval", async () => {
+  const p = (await call("/api/records/projects")).body.find(x => x.marketing);
+  assert.ok(p, "a promoted project exists from the earlier test");
+  assert.equal((await call(`/api/projects/${p.id}/marketing`, { method: "POST", body: { decision: "approve" } })).status, 200);
+  const after = (await call("/api/records/projects")).body.find(x => x.id === p.id);
+  assert.equal(after.marketing.review.status, "approved");
+});

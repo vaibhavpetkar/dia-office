@@ -32,6 +32,17 @@
       <p class="hint">Drag to turn · scroll to zoom · click someone to see their work</p>
     </section>
     <section class="floor" id="floor" aria-label="Office floor"></section>
+    <section class="card records" id="records" aria-label="Records">
+      <div class="rechead"><h3>Records</h3>
+        <div class="tabs" role="tablist">
+          <button type="button" role="tab" data-rec="leads" aria-selected="true">Leads</button>
+          <button type="button" role="tab" data-rec="candidates" aria-selected="false">Candidates</button>
+          <button type="button" role="tab" data-rec="projects" aria-selected="false">Projects</button>
+          <button type="button" role="tab" data-rec="decisions" aria-selected="false">Decisions</button>
+          <button type="button" role="tab" data-rec="spend" aria-selected="false">AI spend</button>
+        </div></div>
+      <div id="recBody" class="recbody"></div>
+    </section>
     </div>
     <aside class="rail">
       <section class="card chat" id="chat" aria-label="Talk to Dia">
@@ -314,7 +325,7 @@ async function load(){
   S=await r.json();setupEl.hidden=true;mainEl.hidden=false;
   renderFloor();renderKpis();renderApprovals();renderProjects();renderFeed();renderWho();renderStart();
 }
-let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(load,400)};
+let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(()=>{load();if(!recBody.querySelector("tr.open"))loadRecords()},400)};
 let ws;
 const wsAuth=()=>{if(KEY&&ws?.readyState===1)ws.send(JSON.stringify({type:"auth",key:KEY}))};
 function connect(){
@@ -339,7 +350,7 @@ function connect(){
 const keyIn=document.getElementById("key");keyIn.value=KEY;
 document.getElementById("bKey").onclick=async()=>{
   KEY=keyIn.value.trim();try{localStorage.setItem("diaKey",KEY)}catch{}
-  try{await api("/api/auth/check");const was=unlocked;unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked";wsAuth();load().catch(()=>{});if(!was)greet()}
+  try{await api("/api/auth/check");const was=unlocked;unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked";wsAuth();load().catch(()=>{});loadRecords();if(!was)greet()}
   catch(e){unlocked=false;document.getElementById("bKey").textContent=/ADMIN_TOKEN is not set/.test(e.message)?"Key not set":"Wrong key"}
   loadKb();
 };
@@ -356,6 +367,47 @@ document.getElementById("candForm").onsubmit=async e=>{
   const kind=v("cKind");
   try{const r=await api("/api/candidates",{method:"POST",body:JSON.stringify({name:v("cName"),email:v("cEmail"),role:v("cRole"),dept:v("cDept"),kind,monthly_cost:+v("cCost")||0,resume:v("cResume")})});
     e.target.reset();m.textContent=kind==="ai"?"Asha is interviewing the AI agent.":"Interview link: "+r.interview_link;}catch(err){m.textContent=err.message;m.classList.add("err")}
+};
+
+/* ---------- Records ---------- */
+let recTab="leads";try{recTab=localStorage.getItem("diaRec")||"leads"}catch{}
+const recBody=document.getElementById("recBody");
+const when=t=>t?new Date(t).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"—";
+const pill=(t,c)=>`<span class="pill" style="--c:var(--${c})">${esc(t)}</span>`;
+const tempCol={hot:"kumkum",warm:"marigold",cold:"eng"},statCol={pending:"marigold",approved:"ok",rejected:"kumkum",hired:"ok",passed:"ok",failed:"kumkum",won:"ok",declined:"kumkum"};
+function table(cols,rows,detail){
+  if(!rows.length)return'<p class="empty">Nothing here yet.</p>';
+  return `<div class="tblwrap"><table><thead><tr>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${rows.map((r,i)=>
+    `<tr class="${detail?"click":""}" data-i="${i}">${cols.map(c=>`<td>${c[1](r)}</td>`).join("")}</tr>${detail?`<tr class="detail" hidden><td colspan="${cols.length}">${detail(r)}</td></tr>`:""}`).join("")}</tbody></table></div>`;
+}
+const REC={
+  leads:{path:"/api/records/leads",render:rows=>table([["Company",r=>`<b>${esc(r.company)}</b><br><small>${esc(r.contact||"")} ${esc(r.email||"")}</small>`],["Need",r=>esc(r.need)],
+    ["Budget",r=>inr(r.budget)],["Score",r=>r.score??"…"],["Lead",r=>r.temperature?pill(r.temperature,tempCol[r.temperature]||"eng"):"…"],["Status",r=>esc(r.status)],["Source",r=>esc(r.source||"")],["Added",r=>when(r.created_at)]],
+    rows,r=>r.report?`<pre class="rep">${esc(JSON.stringify(r.report,null,2))}</pre>`:'<p class="empty">Meera hasn\'t finished the report yet.</p>')},
+  candidates:{path:"/api/records/candidates",render:rows=>table([["Name",r=>`<b>${esc(r.name)}</b><br><small>${esc(r.email||"")}</small>`],["Role",r=>esc(r.role)],
+    ["Type",r=>r.kind==="ai"?"AI agent":"Human"],["Scores",r=>r.evaluation?`${r.evaluation.interview_score} / ${r.evaluation.task_score}`:"—"],["Status",r=>pill(r.status,statCol[r.status]||"eng")],
+    ["Interview link",r=>r.interview_link?`<button type="button" class="btn copy" data-copy="${esc(r.interview_link)}">Copy link</button>`:"—"],["Added",r=>when(r.created_at)]],
+    rows,r=>r.evaluation?`<pre class="rep">${esc(JSON.stringify(r.evaluation,null,2))}</pre>`:'<p class="empty">Not scored yet.</p>')},
+  projects:{path:"/api/records/projects",render:rows=>table([["Client",r=>`<b>${esc(r.company)}</b>`],["Need",r=>esc(r.need)],["Value",r=>inr(r.value)],["Orders",r=>`<span class="mono">${esc(r.so||"")} ${esc(r.wo||"")}</span>`],
+    ["Stage",r=>pill(r.stage,stageCol[r.stage]||"eng")],["Marketing",r=>!r.marketing?"—":r.marketing.review?pill(r.marketing.review.status,statCol[r.marketing.review.status]):pill("draft","marigold")],["Won",r=>when(r.created_at)]],
+    rows,r=>`${r.plan?`<h4>Build plan</h4><pre class="rep">${esc(planText(r.plan))}</pre>`:""}${r.marketing?`<h4>Marketing drafts</h4>
+      <p><b>${esc(r.marketing.content?.title||"")}</b></p><p>${esc(r.marketing.content?.case_study||"")}</p><p><i>LinkedIn:</i> ${esc(r.marketing.content?.linkedin_post||"")}</p>
+      ${r.marketing.review?"":`<div class="row"><button type="button" class="btn yes" data-mk="${r.id}" data-d="approve">Approve for publishing</button><button type="button" class="btn no" data-mk="${r.id}" data-d="reject">Ask Isha to rewrite</button></div>`}`:""}`||'<p class="empty">No plan yet.</p>')},
+  decisions:{path:"/api/records/decisions",render:rows=>table([["Decision",r=>esc(r.title)],["Kind",r=>esc(r.kind.replace("_"," "))],["Result",r=>pill(r.status,statCol[r.status]||"eng")],["Asked",r=>when(r.created_at)],["Decided",r=>when(r.decided_at)]],rows)},
+  spend:{path:"/api/records/spend",render:rows=>table([["Agent",r=>esc(r.agent||"—")],["Model",r=>`<span class="mono">${esc(r.model)}</span>`],["Calls",r=>r.calls],["Tokens in / out",r=>`${r.input_tokens.toLocaleString("en-IN")} / ${r.output_tokens.toLocaleString("en-IN")}`],["Cost (USD)",r=>"$"+r.cost_usd.toFixed(4)]],rows)+'<p class="note">This month only. Mock mode costs nothing.</p>'}
+};
+async function loadRecords(){
+  document.querySelectorAll("[data-rec]").forEach(b=>b.setAttribute("aria-selected",b.dataset.rec===recTab));
+  if(!unlocked){recBody.innerHTML='<p class="empty">🔒 Unlock with the director key to see leads, candidates, projects, decisions and AI spend.</p>';return}
+  try{recBody.innerHTML=REC[recTab].render(await api(REC[recTab].path))}catch(e){recBody.innerHTML=`<p class="empty">${esc(e.message)}</p>`}
+}
+document.querySelector("#records .tabs").onclick=e=>{const b=e.target.closest("[data-rec]");if(!b)return;recTab=b.dataset.rec;try{localStorage.setItem("diaRec",recTab)}catch{};loadRecords()};
+recBody.onclick=async e=>{
+  const c=e.target.closest("[data-copy]");
+  if(c){try{await navigator.clipboard.writeText(c.dataset.copy);c.textContent="Copied"}catch{c.outerHTML=`<input class="mono" readonly value="${esc(c.dataset.copy)}" onfocus="this.select()">`}return}
+  const m=e.target.closest("[data-mk]");
+  if(m){m.disabled=true;try{await api(`/api/projects/${m.dataset.mk}/marketing`,{method:"POST",body:JSON.stringify({decision:m.dataset.d})});loadRecords()}catch(err){m.textContent=err.message}return}
+  const tr=e.target.closest("tr.click");if(tr){const d=tr.nextElementSibling;d.hidden=!d.hidden;tr.classList.toggle("open",!d.hidden)}
 };
 
 /* ---------- 3D office ---------- */
@@ -433,7 +485,7 @@ document.getElementById("diaMini").innerHTML=diaSVG();
 let wsOn=false;
 async function start(){
   try{await health();if(!H.db.ok){showSetup();return}
-    await load();init3d();await checkKey();loadKb();if(!wsOn){wsOn=true;connect()}}
+    await load();init3d();await checkKey();loadKb();loadRecords();if(!wsOn){wsOn=true;connect()}}
   catch(e){if(e.message!=="setup"){H={offline:true,db:{ok:false}};showSetup();setTimeout(start,4000)}}
 }
 start();

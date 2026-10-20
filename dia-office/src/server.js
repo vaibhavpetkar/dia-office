@@ -5,7 +5,7 @@ import { WebSocketServer } from "ws";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { q, one, migrate, dbHint, reloadDatabaseUrl } from "./db.js";
-import { attach } from "./events.js";
+import { attach, log } from "./events.js";
 import { monthSpendUSD } from "./llm.js";
 import { addDoc, search, listDocs } from "./kb.js";
 import { decide } from "./workflows/approvals.js";
@@ -151,6 +151,32 @@ app.post("/api/approvals/:id", admin, wrap(async (req, res) => {
 }));
 app.post("/api/projects/:id/stage", admin, wrap(async (req, res) => {
   res.json(await setStage(parseInt(req.params.id, 10), req.body.stage));
+}));
+
+// ---- Records (the lists behind the office) ----
+app.get("/api/records/leads", admin, wrap(async (_req, res) => res.json((await q(
+  "SELECT id, company, contact, email, need, budget, source, score, temperature, status, report, created_at FROM leads ORDER BY created_at DESC LIMIT 200")).rows)));
+app.get("/api/records/candidates", admin, wrap(async (_req, res) => res.json((await q(
+  `SELECT id, name, email, role, dept, kind, monthly_cost, status, evaluation, created_at,
+     CASE WHEN status = 'interview_sent' AND kind = 'human' THEN token END AS token FROM candidates ORDER BY created_at DESC LIMIT 200`)).rows
+  .map(({ token, ...c }) => ({ ...c, interview_link: token ? `${process.env.PUBLIC_URL}/interview.html?t=${token}` : null })))));
+app.get("/api/records/projects", admin, wrap(async (_req, res) => res.json((await q(
+  "SELECT id, company, need, value, so, wo, stage, plan, marketing, created_at FROM projects ORDER BY created_at DESC LIMIT 200")).rows)));
+app.get("/api/records/decisions", admin, wrap(async (_req, res) => res.json((await q(
+  "SELECT id, kind, title, status, created_at, decided_at FROM approvals ORDER BY created_at DESC LIMIT 200")).rows)));
+app.get("/api/records/spend", admin, wrap(async (_req, res) => res.json((await q(
+  `SELECT COALESCE(g.name, u.agent_id) AS agent, u.model, count(*)::int AS calls, sum(u.input_tokens)::int AS input_tokens,
+     sum(u.output_tokens)::int AS output_tokens, round(sum(u.cost_usd)::numeric, 4)::float AS cost_usd
+   FROM llm_usage u LEFT JOIN agents g ON g.id = u.agent_id
+   WHERE u.created_at >= date_trunc('month', now()) GROUP BY 1, 2 ORDER BY cost_usd DESC, calls DESC`)).rows)));
+// Marketing drafts are only drafts until the director approves them for publishing.
+app.post("/api/projects/:id/marketing", admin, wrap(async (req, res) => {
+  const ok = req.body?.decision === "approve";
+  const p = await one(`UPDATE projects SET marketing = jsonb_set(marketing, '{review}', $2::jsonb) WHERE id=$1 AND marketing IS NOT NULL RETURNING id, company`,
+    [parseInt(req.params.id, 10), JSON.stringify({ status: ok ? "approved" : "rejected", at: new Date().toISOString() })]);
+  if (!p) throw Object.assign(new Error("No marketing drafts for that project yet."), { status: 404 });
+  await log("isha", ok ? `got your approval to publish the ${p.company} case study and post.` : `will rewrite the ${p.company} drafts.`, null, false);
+  res.json({ ok: true });
 }));
 
 // ---- Talk to Dia ----

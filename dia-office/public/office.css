@@ -230,3 +230,23 @@ pre.rep{white-space:pre-wrap;font-size:.74rem;background:var(--bg);border-radius
 .card.chat .msgs{max-height:260px}
 pre.diff .del{display:block;color:var(--kumkum);text-decoration:line-through;opacity:.85}
 pre.diff .add{display:block;color:var(--ok)}
+
+/* Records */
+.records{display:grid;gap:10px}
+.rechead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tabs{display:flex;gap:4px;flex-wrap:wrap}
+.tabs button{font:inherit;font-size:.8rem;font-weight:600;border:1px solid var(--line);background:var(--bg);color:var(--muted);border-radius:999px;padding:4px 12px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--peacock);border-color:var(--peacock);color:var(--surface)}
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.records table{border-collapse:collapse;width:100%;font-size:.82rem;min-width:640px}
+.records th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);background:var(--bg);padding:7px 10px;font-weight:600}
+.records td{padding:7px 10px;border-top:1px solid var(--line);vertical-align:top}
+.records td small{color:var(--muted)}
+.records tr.click{cursor:pointer}
+.records tr.click:hover td,.records tr.open td{background:color-mix(in srgb,var(--peacock) 5%,transparent)}
+.records tr.detail td{background:var(--bg)}
+.records h4{margin:6px 0 4px;font-size:.85rem}
+.records .row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.records .yes{background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.records .no{color:var(--kumkum)}
+.mono{font-family:var(--f-mono);font-size:.74rem}
