@@ -4,7 +4,7 @@ import { q, one } from "../db.js";
 import { ask } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh } from "../events.js";
+import { status, idle, log, handoff, refresh, problem } from "../events.js";
 
 export const STAGES = ["Won", "Work order", "Planning", "Building", "Testing", "Deploying", "Live", "Promoted"];
 
@@ -45,12 +45,12 @@ export async function setStage(projectId, stage) {
   if (stage === "Live") {
     await idle("om"); await log("om", `${p.company} is live.`);
     await handoff("om", "pooja", "Go-live");
-    promote(p).catch(e => log("dia", `marketing step failed: ${e.message}`, null, false));
+    promote(p).catch(e => problem(`marketing step failed for ${p.company}`, e));
   }
   return p;
 }
 
-async function promote(p) {
+export async function promote(p) {
   await status("pooja", `Planning campaign for ${p.company}`);
   const c = await ask({
     agent: "pooja", tier: "fast",

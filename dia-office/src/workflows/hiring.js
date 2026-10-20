@@ -5,7 +5,7 @@ import { q, one } from "../db.js";
 import { ask, seeded } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh } from "../events.js";
+import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { requestApproval, onDecision } from "./approvals.js";
 import { sendMail } from "../mail.js";
 
@@ -14,11 +14,11 @@ export async function newCandidate(input) {
   const c = await one(
     `INSERT INTO candidates (name,email,role,dept,kind,resume,monthly_cost,token) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
     [input.name, input.email || null, input.role, input.dept, input.kind === "ai" ? "ai" : "human", input.resume || "", input.monthly_cost || 0, token]);
-  prepare(c).catch(e => log("dia", `could not start interview for ${c.name}: ${e.message}`, null, false));
+  prepare(c).catch(e => problem(`could not start interview for ${c.name}`, e));
   return c;
 }
 
-async function prepare(c) {
+export async function prepare(c) {
   await status("asha", `Preparing interview for ${c.name}`);
   const iv = await ask({
     agent: "asha", tier: "fast",
@@ -59,10 +59,10 @@ export async function submitAnswers(token, answers, taskAnswer) {
   if (!c) throw Object.assign(new Error("Interview link not found."), { status: 404 });
   if (c.status !== "interview_sent") throw Object.assign(new Error("This interview was already submitted."), { status: 409 });
   await q("UPDATE candidates SET answers=$2, status='evaluating' WHERE id=$1", [c.id, { answers, task: taskAnswer }]);
-  evaluate(c.id).catch(e => log("dia", `could not evaluate ${c.name}: ${e.message}`, null, false));
+  evaluate(c.id).catch(e => problem(`could not evaluate ${c.name}`, e));
 }
 
-async function evaluate(id) {
+export async function evaluate(id) {
   const c = await one("SELECT * FROM candidates WHERE id=$1", [id]);
   await status("asha", `Scoring ${c.name}…`);
   const policy = await context(`hiring criteria ${c.role}`, 2);

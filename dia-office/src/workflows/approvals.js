@@ -1,6 +1,6 @@
 // Human-in-the-loop: Dia never hires or takes a project without a person's decision.
 import { one } from "../db.js";
-import { broadcast, log, status } from "../events.js";
+import { broadcast, log, status, problem } from "../events.js";
 
 const handlers = {}; // kind -> async (approval, approved) => void
 export const onDecision = (kind, fn) => (handlers[kind] = fn);
@@ -20,6 +20,6 @@ export async function decide(id, approved) {
   broadcast({ type: "approval_done", id: a.id, status: a.status });
   await log("dia", `${approved ? "Approved" : "Rejected"} by you: ${a.title}`);
   await status("dia", approved ? "Thank you! Passing it on." : "Okay, I'll close this one.", false);
-  handlers[a.kind]?.(a, approved).catch(e => log("dia", `hit a problem continuing "${a.title}": ${e.message}`, null, false));
+  handlers[a.kind]?.(a, approved).catch(e => problem(`hit a problem continuing "${a.title}"`, e));
   return a;
 }

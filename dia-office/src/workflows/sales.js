@@ -3,7 +3,7 @@ import { q, one } from "../db.js";
 import { ask, seeded } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh } from "../events.js";
+import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { requestApproval, onDecision } from "./approvals.js";
 import { startEngineering } from "./engineering.js";
 import { sendMail } from "../mail.js";
@@ -15,11 +15,11 @@ export async function newLead(input) {
     `INSERT INTO leads (company,contact,email,need,budget,source) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [input.company, input.contact || null, input.email || null, input.need, input.budget || null, input.source || "Manual"]);
   refresh("stats");
-  run(lead).catch(e => log("dia", `could not finish lead ${lead.company}: ${e.message}`, null, false));
+  run(lead).catch(e => problem(`could not finish lead ${lead.company}`, e));
   return lead;
 }
 
-async function run(lead) {
+export async function run(lead) {
   await status("kabir", `Capturing ${lead.company} (${lead.source})`);
   await log("kabir", `captured a lead from ${lead.source}: ${lead.company} needs ${lead.need}.`);
   await idle("kabir");

@@ -179,3 +179,52 @@ pre.rep{white-space:pre-wrap;font-size:.74rem;background:var(--bg);border-radius
 .docs small{font-family:var(--f-mono);font-size:.66rem;color:var(--muted);white-space:nowrap}
 .form textarea.tall{min-height:120px}
 .key input.need{border-color:var(--kumkum);box-shadow:0 0 0 3px color-mix(in srgb,var(--kumkum) 25%,transparent)}
+
+/* 3D office stage */
+.stagecol{display:grid;gap:14px;min-width:0}
+.stage{position:relative;height:clamp(460px,72vh,760px);border-radius:20px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);
+  background:radial-gradient(120% 90% at 50% 0%,color-mix(in srgb,var(--peacock) 10%,var(--surface)),var(--floor))}
+.floor3d{position:absolute;inset:0}
+.floor3d canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.floor3d canvas:active{cursor:grabbing}
+.o3d-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.o3d-bub{position:absolute;left:0;top:0;max-width:170px;width:max-content;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;
+  padding:4px 9px;font-size:.72rem;line-height:1.25;box-shadow:var(--shadow);margin-top:-8px}
+.o3d-bub::after{content:"";position:absolute;top:100%;left:50%;margin-left:-5px;border:5px solid transparent;border-top-color:var(--surface)}
+.o3d-bub.dia{max-width:260px;font-size:.8rem;border-color:var(--peacock);background:color-mix(in srgb,var(--peacock) 8%,var(--surface))}
+.o3d-doc{position:absolute;left:0;top:0;font-family:var(--f-mono);font-size:.64rem;background:var(--marigold);color:#1b1408;padding:2px 7px;border-radius:6px;white-space:nowrap;box-shadow:var(--shadow)}
+.viewbtns{position:absolute;top:12px;right:12px;display:flex;gap:6px}
+.viewbtns .btn{background:color-mix(in srgb,var(--surface) 88%,transparent);backdrop-filter:blur(6px)}
+.stage .hint{position:absolute;top:14px;left:16px;margin:0;font-size:.72rem;color:var(--muted);pointer-events:none}
+
+/* Talk to Dia */
+.chat{position:absolute;left:12px;bottom:12px;width:min(370px,calc(100% - 24px));background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(10px);
+  border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);display:grid}
+.chat header{display:flex;justify-content:space-between;align-items:center;padding:8px 10px 8px 14px;border-bottom:1px solid var(--line)}
+.chat header b{font-family:var(--f-display);font-size:1rem;color:var(--peacock)}
+.chat .row{display:flex;gap:4px}
+.btn.icon{padding:3px 8px;min-width:32px}
+.chatbody{display:grid;gap:8px;padding:10px}
+.msgs{max-height:210px;overflow:auto;display:grid;gap:6px;align-content:start}
+.m{max-width:88%;display:grid;gap:4px}
+.m p{margin:0;padding:6px 10px;border-radius:12px;font-size:.85rem;line-height:1.35}
+.m.dia p{background:color-mix(in srgb,var(--peacock) 12%,var(--surface));border-bottom-left-radius:4px}
+.m.me{justify-self:end}
+.m.me p{background:var(--peacock);color:var(--surface);border-bottom-right-radius:4px}
+.m .act{justify-self:start;font-size:.78rem;background:var(--ok);border-color:var(--ok);color:var(--surface)}
+.m.typing i{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:var(--muted);animation:bob .9s infinite}
+.m.typing i:nth-child(2){animation-delay:.15s}.m.typing i:nth-child(3){animation-delay:.3s}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font:inherit;font-size:.72rem;border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:999px;padding:3px 9px;cursor:pointer}
+.chip:hover{border-color:var(--peacock)}
+.ask{display:flex;gap:6px}
+.ask input{flex:1;min-width:0;font:inherit;font-size:.88rem;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+#bMic.rec{background:var(--kumkum);border-color:var(--kumkum);color:var(--surface)}
+@media (max-width:820px){
+  .stage{height:auto;overflow:visible;display:grid;border:0;box-shadow:none;background:none}
+  .floor3d{position:relative;height:420px;border-radius:18px;overflow:hidden;border:1px solid var(--line);background:radial-gradient(120% 90% at 50% 0%,color-mix(in srgb,var(--peacock) 10%,var(--surface)),var(--floor))}
+  .stage .hint{display:none}
+  .chat{position:static;width:auto;margin-top:12px}
+}
+.card.chat{position:static;width:auto;padding:0;backdrop-filter:none;background:var(--surface);border-color:color-mix(in srgb,var(--peacock) 45%,var(--line))}
+.card.chat .msgs{max-height:260px}

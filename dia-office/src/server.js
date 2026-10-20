@@ -12,11 +12,15 @@ import { decide } from "./workflows/approvals.js";
 import { newLead } from "./workflows/sales.js";
 import { newCandidate, getInterview, submitAnswers } from "./workflows/hiring.js";
 import { setStage, STAGES } from "./workflows/engineering.js";
+import { chat } from "./assistant.js";
+import { selfCheck, scheduleSelfCheck } from "./selfcheck.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 // fileURLToPath, not URL.pathname: pathname gives "/C:/..." on Windows and keeps %20 for spaces.
 app.use(express.static(fileURLToPath(new URL("../public", import.meta.url))));
+// three.js for the 3D office, served from node_modules so the page works offline.
+app.use("/vendor/three", express.static(fileURLToPath(new URL("../node_modules/three", import.meta.url))));
 
 const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
   if (!e.status || e.status >= 500) console.error(e);
@@ -39,10 +43,11 @@ async function connectDb() {
 }
 const tokenState = () => !process.env.ADMIN_TOKEN ? "missing" : process.env.ADMIN_TOKEN === PLACEHOLDER_TOKEN ? "placeholder" : "ok";
 
-app.get("/api/health", (_req, res) => res.json({
+const health = () => ({
   db, admin_token: tokenState(), provider: process.env.LLM_PROVIDER || "mock",
   ses: !!process.env.SES_FROM, platform: process.platform
-}));
+});
+app.get("/api/health", (_req, res) => res.json(health()));
 let retrying;
 app.post("/api/health/retry", async (_req, res) => {
   if (!db.ok) await (retrying ??= connectDb().finally(() => (retrying = null)));
@@ -124,6 +129,14 @@ app.post("/api/projects/:id/stage", admin, wrap(async (req, res) => {
   res.json(await setStage(parseInt(req.params.id, 10), req.body.stage));
 }));
 
+// ---- Talk to Dia ----
+app.post("/api/dia/chat", admin, wrap(async (req, res) => {
+  need(req.body, ["message"]);
+  const history = Array.isArray(req.body.history) ? req.body.history.slice(-8).map(h => ({ role: h.role === "dia" ? "Dia" : "Director", text: String(h.text).slice(0, 1000) })) : [];
+  res.json(await chat(String(req.body.message).slice(0, 2000), history));
+}));
+app.post("/api/dia/selfcheck", admin, wrap(async (_req, res) => res.json(await selfCheck({ getHealth: health }))));
+
 // ---- Company knowledge base ----
 app.post("/api/kb", admin, wrap(async (req, res) => {
   need(req.body, ["title", "content"]);
@@ -133,6 +146,7 @@ app.get("/api/kb", admin, wrap(async (_req, res) => res.json(await listDocs())))
 app.get("/api/kb/search", admin, wrap(async (req, res) => res.json(await search(String(req.query.q || ""), 5))));
 
 await connectDb();
+scheduleSelfCheck(health);
 const server = createServer(app);
 attach(new WebSocketServer({ server, path: "/ws" }));
 const port = parseInt(process.env.PORT || "8080", 10);
