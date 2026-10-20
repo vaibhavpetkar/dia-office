@@ -6,6 +6,7 @@ import { log, status, problems, problem } from "./events.js";
 import { run as runLead } from "./workflows/sales.js";
 import { prepare, evaluate } from "./workflows/hiring.js";
 import { startEngineering, promote } from "./workflows/engineering.js";
+import { repairable } from "./repair.js";
 
 const STUCK_AFTER = "3 minutes";
 const MAX_TRIES = 2;
@@ -71,7 +72,9 @@ export async function selfCheck({ repair = true, getHealth } = {}) {
   if (gaveUp.length) findings.push({ level: "bad", text: `Still stuck after ${MAX_TRIES} restarts: ${gaveUp.join(", ")}. Check the error above or the server terminal.` });
   if (repaired.length) await log("dia", `restarted work that had stopped half-way: ${repaired.join(", ")}.`, null, false);
 
-  return { ok: !findings.some(f => f.level === "bad"), findings, repaired };
+  const codeErrors = repairable();
+  if (codeErrors.length) findings.push({ level: "warn", text: `${codeErrors.length} recent error${codeErrors.length > 1 ? "s" : ""} came from the office code. I can draft a fix for you to approve.` });
+  return { ok: !findings.some(f => f.level === "bad"), findings, repaired, can_repair: codeErrors.length > 0 };
 }
 
 // Run once shortly after start (picks up work lost in a restart), then every 5 minutes.

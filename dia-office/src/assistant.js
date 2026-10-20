@@ -39,6 +39,7 @@ function toAction(a, snap) {
       body: { name: String(a.name), role: String(a.role), dept: a.dept, kind: a.kind === "ai" ? "ai" : "human", email: a.email || null, monthly_cost: Number(a.monthly_cost) || 0 } };
   if (a.type === "doc" && a.title && a.content)
     return { label: `Save "${a.title}" to company knowledge`, method: "POST", path: "/api/kb", body: { title: String(a.title), content: String(a.content) } };
+  if (a.type === "repair") return { label: "Draft a code fix for my latest error", method: "POST", path: "/api/dia/repair", body: {} };
   if (a.type === "selfcheck") return { label: "Run my self-check and fix what I can", method: "POST", path: "/api/dia/selfcheck", body: {} };
   return null;
 }
@@ -65,6 +66,8 @@ function mockReply(msg, snap) {
     if (!snap.leads.length) return { reply: 'No leads yet. Tell me "add lead Acme needs an online store" and I\'ll pass it to Kabir.' };
     return { reply: `${s.leads} leads, ${s.hot} hot. Latest: ` + snap.leads.slice(0, 4).map(l => `${l.company} (${l.temperature || "being analysed"})`).join(", ") + "." };
   }
+  if (/(fix|repair).*(code|bug)|code fix|bug/.test(m))
+    return { reply: "I can look at my latest error, find the line in my code and draft a fix. You approve it before anything changes, and then I open a pull request.", action: { type: "repair" } };
   if (/fix|repair|problem|error|broken|health|check|stuck/.test(m))
     return { reply: "I can check myself: the database, the AI, the budget, and any work that stopped half-way. Shall I run it and restart anything stuck?", action: { type: "selfcheck" } };
   if (/who are you|your name|what can you/.test(m) || /help/.test(m))
@@ -91,7 +94,7 @@ export async function chat(message, history = []) {
         `Conversation so far:\n${history.slice(-8).map(h => `${h.role}: ${h.text}`).join("\n")}\n\nDirector: ${message}\n\n` +
         `Return {"reply":"...","action":null | {"type":"approve"|"reject","id":number} | {"type":"stage","project_id":number,"stage":"${STAGES.join("|")}"} | ` +
         `{"type":"lead","company":"...","need":"...","budget":number} | {"type":"candidate","name":"...","role":"...","dept":"hr|sales|eng|mkt","kind":"human|ai"} | ` +
-        `{"type":"doc","title":"...","content":"..."} | {"type":"selfcheck"}}`,
+        `{"type":"doc","title":"...","content":"..."} | {"type":"selfcheck"} | {"type":"repair"}}`,
       mock: () => mockReply(message, snap)
     });
   }

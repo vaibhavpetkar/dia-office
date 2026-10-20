@@ -177,10 +177,14 @@ function renderApprovals(){
   const box=document.getElementById("approvals"),n=S.approvals.length,c=document.getElementById("apCount");
   c.textContent=n;c.dataset.n=n;
   if(!n){box.innerHTML='<p class="empty">Nothing waiting. Dia will ask here before any hire or new project.</p>';return}
-  box.innerHTML=S.approvals.map(a=>`<div class="appr"><span class="who">Dia asks · ${a.kind==="hire"?"Hiring":"New project"}</span><b>${esc(a.title)}</b>
-    ${fmtBody(a.body)}${a.body.client_message?`<p><i>Message to client:</i> ${esc(a.body.client_message)}</p>`:""}
-    <div class="row"><button class="btn yes" data-ap="${a.id}" data-d="approve">${a.kind==="hire"?"Hire":"Approve project"}</button>
-    <button class="btn no" data-ap="${a.id}" data-d="reject">${a.kind==="hire"?"Reject":"Decline"}</button></div><p class="msg" id="apm${a.id}"></p></div>`).join("");
+  const KIND={hire:["Hiring","Hire","Reject"],project:["New project","Approve project","Decline"],code_fix:["Code fix","Approve fix","Discard"]};
+  box.innerHTML=S.approvals.map(a=>{const [what,yes,no]=KIND[a.kind]||[a.kind,"Approve","Reject"];
+    const detail=a.kind==="code_fix"?`<p>${esc(a.body.explanation)}</p><dl class="kv"><dt>file</dt><dd>${esc(a.body.file)}:${esc(a.body.line)}</dd><dt>error</dt><dd>${esc(a.body.error)}</dd><dt>confidence</dt><dd>${esc(a.body.confidence||"?")}</dd></dl>
+      <pre class="rep diff"><span class="del">${esc(a.body.find)}</span>\n<span class="add">${esc(a.body.replace)}</span></pre><p class="note" style="margin:0">Approving opens a pull request for review. The running office is not changed.</p>`
+      :`${fmtBody(a.body)}${a.body.client_message?`<p><i>Message to client:</i> ${esc(a.body.client_message)}</p>`:""}`;
+    return `<div class="appr"><span class="who">Dia asks · ${what}</span><b>${esc(a.title)}</b>${detail}
+    <div class="row"><button class="btn yes" data-ap="${a.id}" data-d="approve">${yes}</button>
+    <button class="btn no" data-ap="${a.id}" data-d="reject">${no}</button></div><p class="msg" id="apm${a.id}"></p></div>`}).join("");
 }
 document.getElementById("approvals").addEventListener("click",async e=>{
   const b=e.target.closest("[data-ap]");if(!b)return;
@@ -390,7 +394,9 @@ function addMsg(role,text,action){
   el.innerHTML=`<p>${esc(text)}</p>`;
   if(action){const b=document.createElement("button");b.type="button";b.className="btn act";b.textContent=action.label;
     b.onclick=async()=>{b.disabled=true;try{const r=await api(action.path,{method:action.method,body:JSON.stringify(action.body)});
-      b.textContent="Done ✓";if(r&&r.findings){const t=selfCheckText(r);addMsg("dia",t);speak(t)}}
+      b.textContent="Done ✓";
+      if(r&&r.findings){const t=selfCheckText(r);addMsg("dia",t,r.can_repair?{label:"Draft a code fix for my latest error",method:"POST",path:"/api/dia/repair",body:{}}:null);speak(t)}
+      if(r&&r.kind==="code_fix"){const t="I've drafted a fix. It's in your decisions box with the exact change. Nothing changes until you approve it.";addMsg("dia",t);speak(t)}}
       catch(err){b.textContent=err.message;b.disabled=false}};
     el.appendChild(b)}
   msgs.appendChild(el);msgs.scrollTop=msgs.scrollHeight;

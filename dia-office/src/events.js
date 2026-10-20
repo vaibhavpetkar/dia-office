@@ -36,8 +36,9 @@ export const refresh = what => broadcast({ type: "refresh", what });
 
 // Problems Dia ran into while working. Her self-check reads these and reports them in chat.
 export const problems = [];
+let problemSeq = 0;
 export async function problem(text, e) {
-  problems.unshift({ at: new Date().toISOString(), text, error: e?.message || String(e) });
+  problems.unshift({ id: ++problemSeq, at: new Date().toISOString(), text, error: e?.message || String(e), stack: e?.stack || null });
   problems.length = Math.min(problems.length, 50);
   console.error(`${text}:`, e?.message || e);
   await log("dia", `${text}: ${e?.message || e}`, null, false).catch(() => {});

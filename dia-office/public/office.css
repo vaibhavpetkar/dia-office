@@ -228,3 +228,5 @@ pre.rep{white-space:pre-wrap;font-size:.74rem;background:var(--bg);border-radius
 }
 .card.chat{position:static;width:auto;padding:0;backdrop-filter:none;background:var(--surface);border-color:color-mix(in srgb,var(--peacock) 45%,var(--line))}
 .card.chat .msgs{max-height:260px}
+pre.diff .del{display:block;color:var(--kumkum);text-decoration:line-through;opacity:.85}
+pre.diff .add{display:block;color:var(--ok)}

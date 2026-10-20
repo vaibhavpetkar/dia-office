@@ -14,6 +14,7 @@ import { newCandidate, getInterview, submitAnswers } from "./workflows/hiring.js
 import { setStage, STAGES } from "./workflows/engineering.js";
 import { chat } from "./assistant.js";
 import { selfCheck, scheduleSelfCheck } from "./selfcheck.js";
+import { proposeFix } from "./repair.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -136,6 +137,7 @@ app.post("/api/dia/chat", admin, wrap(async (req, res) => {
   res.json(await chat(String(req.body.message).slice(0, 2000), history));
 }));
 app.post("/api/dia/selfcheck", admin, wrap(async (_req, res) => res.json(await selfCheck({ getHealth: health }))));
+app.post("/api/dia/repair", admin, wrap(async (req, res) => res.json(await proposeFix(req.body?.problem_id))));
 
 // ---- Company knowledge base ----
 app.post("/api/kb", admin, wrap(async (req, res) => {
