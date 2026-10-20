@@ -1,15 +1,21 @@
 import { q, one } from "./db.js";
 
 let clients = new Set();
-export function attach(wss) {
+// The page sends {"type":"auth","key":"..."} after connecting; only then does it get client data.
+export function attach(wss, keyMatches) {
   wss.on("connection", ws => {
+    ws.director = false;
     clients.add(ws);
+    ws.on("message", raw => {
+      try { const m = JSON.parse(raw); if (m.type === "auth") { ws.director = keyMatches(String(m.key || "")); ws.send(JSON.stringify({ type: "auth", ok: ws.director })); } } catch {}
+    });
     ws.on("close", () => clients.delete(ws));
   });
 }
+const PRIVATE = new Set(["activity", "approval", "approval_done"]);
 export function broadcast(msg) {
-  const s = JSON.stringify(msg);
-  for (const c of clients) if (c.readyState === 1) c.send(s);
+  const s = JSON.stringify(msg), priv = PRIVATE.has(msg.type);
+  for (const c of clients) if (c.readyState === 1 && (!priv || c.director)) c.send(s);
 }
 
 // An agent says what it is doing (shown as a speech bubble).

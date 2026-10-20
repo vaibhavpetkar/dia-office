@@ -163,8 +163,8 @@ function renderWho(){
 }
 function renderKpis(){
   const s=S.stats,team=S.agents.filter(a=>a.id!=="dia").length;
-  const it=[[team,"Team"],[s.leads,"Leads"],[s.hot,"Hot"],[s.won,"Won"],[s.live,"Live"],["₹"+((s.revenue||0)/1e5).toFixed(1)+"L","Revenue"],
-    ["₹"+((s.payroll||0)/1e5).toFixed(2)+"L","Monthly billing"],["$"+(s.ai_spend_usd||0).toFixed(2)+(s.ai_budget_usd?` / ${s.ai_budget_usd}`:""),"AI spend (month)"]];
+  const it=[[team,"Team"],[s.leads,"Leads"],[s.hot,"Hot"],[s.won,"Won"],[s.live,"Live"],...(S.director?[["₹"+((s.revenue||0)/1e5).toFixed(1)+"L","Revenue"],
+    ["₹"+((s.payroll||0)/1e5).toFixed(2)+"L","Monthly billing"],["$"+(s.ai_spend_usd||0).toFixed(2)+(s.ai_budget_usd?` / ${s.ai_budget_usd}`:""),"AI spend (month)"]]:[["🔒","Money"]])];
   document.getElementById("kpis").innerHTML=it.map(([v,l])=>`<div class="kpi"><b>${v??0}</b><span>${l}</span></div>`).join("");
   document.getElementById("prov").textContent="AI: "+(s.provider||"?");
 }
@@ -176,6 +176,7 @@ function fmtBody(b){
 function renderApprovals(){
   const box=document.getElementById("approvals"),n=S.approvals.length,c=document.getElementById("apCount");
   c.textContent=n;c.dataset.n=n;
+  if(!S.director){box.innerHTML='<p class="empty">🔒 Unlock with the director key to see this.</p>';return}
   if(!n){box.innerHTML='<p class="empty">Nothing waiting. Dia will ask here before any hire or new project.</p>';return}
   const KIND={hire:["Hiring","Hire","Reject"],project:["New project","Approve project","Decline"],code_fix:["Code fix","Approve fix","Discard"]};
   box.innerHTML=S.approvals.map(a=>{const [what,yes,no]=KIND[a.kind]||[a.kind,"Approve","Reject"];
@@ -194,6 +195,7 @@ document.getElementById("approvals").addEventListener("click",async e=>{
 const stageCol={Won:"sales","Work order":"sales",Planning:"eng",Building:"eng",Testing:"eng",Deploying:"eng",Live:"ok",Promoted:"mkt"};
 function renderProjects(){
   const box=document.getElementById("projects");document.getElementById("projCount").textContent=S.projects.length;
+  if(!S.director){box.innerHTML='<p class="empty">🔒 Unlock with the director key to see this.</p>';return}
   if(!S.projects.length){box.innerHTML='<p class="empty">Won projects show up here with their sale order and work order.</p>';return}
   box.innerHTML=S.projects.map(p=>{
     const i=S.stages.indexOf(p.stage),next=["Building","Testing","Deploying"].includes(p.stage)?S.stages[i+1]:null,pct=Math.round(i/(S.stages.length-1)*100);
@@ -217,7 +219,7 @@ function evHTML(x){
     <div style="--c:var(--${a?.dept||"dia"})"><b>${esc(a?.name||"Office")}</b> ${esc(x.text)}
     ${d?`<details><summary>Details</summary><pre class="rep">${esc(typeof d==="string"?d:JSON.stringify(d,null,2))}</pre></details>`:""}</div>`;
 }
-function renderFeed(){feed.innerHTML=S.activity.map(x=>`<div class="ev">${evHTML(x)}</div>`).join("")||'<p class="empty">Quiet so far. Add a lead or a candidate to start the day.</p>'}
+function renderFeed(){if(!S.director){feed.innerHTML='<p class="empty">🔒 Unlock with the director key to see this.</p>';return}feed.innerHTML=S.activity.map(x=>`<div class="ev">${evHTML(x)}</div>`).join("")||'<p class="empty">Quiet so far. Add a lead or a candidate to start the day.</p>'}
 
 async function fly(from,to,label){
   window.Office3D?.handoff(from,to,label);
@@ -307,14 +309,17 @@ async function checkKey(){
 
 /* ---------- Data ---------- */
 async function load(){
-  const r=await fetch("/api/state");
+  const r=await fetch("/api/state",{headers:KEY?{authorization:"Bearer "+KEY}:{}});
   if(r.status===503){await health();showSetup();throw new Error("setup")}
   S=await r.json();setupEl.hidden=true;mainEl.hidden=false;
   renderFloor();renderKpis();renderApprovals();renderProjects();renderFeed();renderWho();renderStart();
 }
 let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(load,400)};
+let ws;
+const wsAuth=()=>{if(KEY&&ws?.readyState===1)ws.send(JSON.stringify({type:"auth",key:KEY}))};
 function connect(){
-  const ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  ws=new WebSocket((location.protocol==="https:"?"wss://":"ws://")+location.host+"/ws");
+  ws.onopen=wsAuth;
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.type==="agent"){const a=S.agents.find(x=>x.id===m.id);if(a)a.status=m.status||"Idle";bubble(m.id,m.status,m.working);if(m.id===selected)renderWho()}
@@ -334,7 +339,7 @@ function connect(){
 const keyIn=document.getElementById("key");keyIn.value=KEY;
 document.getElementById("bKey").onclick=async()=>{
   KEY=keyIn.value.trim();try{localStorage.setItem("diaKey",KEY)}catch{}
-  try{await api("/api/auth/check");const was=unlocked;unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked";if(!was)greet()}
+  try{await api("/api/auth/check");const was=unlocked;unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked";wsAuth();load().catch(()=>{});if(!was)greet()}
   catch(e){unlocked=false;document.getElementById("bKey").textContent=/ADMIN_TOKEN is not set/.test(e.message)?"Key not set":"Wrong key"}
   loadKb();
 };

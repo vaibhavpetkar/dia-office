@@ -31,8 +31,8 @@ const wrap = fn => (req, res) => Promise.resolve(fn(req, res)).catch(e => {
 // ---- Setup status: the page shows a setup screen until the database is reachable ----
 const PLACEHOLDER_TOKEN = "change-me-to-a-long-random-string";
 const db = { ok: false, error: null, hint: null };
-async function connectDb() {
-  reloadDatabaseUrl();
+async function connectDb({ reload = false } = {}) {
+  if (reload) reloadDatabaseUrl();
   try {
     await migrate();
     Object.assign(db, { ok: true, error: null, hint: null });
@@ -51,37 +51,53 @@ const health = () => ({
 app.get("/api/health", (_req, res) => res.json(health()));
 let retrying;
 app.post("/api/health/retry", async (_req, res) => {
-  if (!db.ok) await (retrying ??= connectDb().finally(() => (retrying = null)));
+  if (!db.ok) await (retrying ??= connectDb({ reload: true }).finally(() => (retrying = null)));
   res.status(db.ok ? 200 : 503).json({ db });
 });
 app.use("/api", (_req, res, next) => db.ok ? next()
   : res.status(503).json({ error: `Database not ready: ${db.hint}`, setup: true }));
 
-// Only the director (whoever holds ADMIN_TOKEN) can add work or make decisions.
+// Small in-memory rate limit: `max` hits per `ms` per IP for one bucket name.
+const hits = new Map();
+function limited(bucket, ip, max, ms) {
+  const k = `${bucket}:${ip}`, now = Date.now(), h = (hits.get(k) || []).filter(t => now - t < ms);
+  h.push(now); hits.set(k, h);
+  return h.length > max;
+}
+setInterval(() => { const now = Date.now(); for (const [k, h] of hits) if (h.every(t => now - t > 15 * 60 * 1000)) hits.delete(k); }, 60 * 1000).unref();
+
+// Only the director (whoever holds ADMIN_TOKEN) can add work, make decisions or see client data.
+const keyMatches = sent => {
+  const want = Buffer.from(process.env.ADMIN_TOKEN || ""), got = Buffer.from(sent || "");
+  return tokenState() === "ok" && want.length === got.length && timingSafeEqual(want, got);
+};
+export const isDirector = req => keyMatches((req.get("authorization") || "").replace(/^Bearer\s*/, "").trim());
 function admin(req, res, next) {
   if (tokenState() !== "ok")
     return res.status(401).json({ error: "ADMIN_TOKEN is not set in .env yet. Run npm run setup, then restart the office." });
-  const want = Buffer.from(process.env.ADMIN_TOKEN || "");
+  if (isDirector(req)) return next();
+  if (limited("badkey", req.ip, 20, 10 * 60 * 1000))
+    return res.status(429).json({ error: "Too many wrong director keys. Wait 10 minutes and try again." });
   const sent = (req.get("authorization") || "").replace(/^Bearer\s*/, "").trim();
   if (!sent)
     return res.status(401).json({ error: "Enter your director key first: paste ADMIN_TOKEN from .env into the Director key box at the top of the page and press Unlock.", key: "missing" });
-  const got = Buffer.from(sent);
-  if (want.length !== got.length || !timingSafeEqual(want, got))
-    return res.status(401).json({ error: "That director key doesn't match ADMIN_TOKEN in .env. Copy it again from .env. If you changed .env after starting the office, restart npm start.", key: "wrong" });
-  next();
+  return res.status(401).json({ error: "That director key doesn't match ADMIN_TOKEN in .env. Copy it again from .env. If you changed .env after starting the office, restart npm start.", key: "wrong" });
 }
 const need = (body, fields) => {
   const miss = fields.filter(f => !body?.[f]);
   if (miss.length) throw Object.assign(new Error(`Missing: ${miss.join(", ")}`), { status: 400 });
 };
 
-// ---- Office state (read-only, safe to show on a screen) ----
-app.get("/api/state", wrap(async (_req, res) => {
+// ---- Office state ----
+// Anyone who can open the page sees the floor and counts. Client data, decisions, money and the
+// activity feed are only sent to the director.
+app.get("/api/state", wrap(async (req, res) => {
+  const director = isDirector(req), none = { rows: [] };
   const [agents, approvals, projects, activity, stats] = await Promise.all([
     q("SELECT id,name,role,dept,kind,monthly_cost,look,status,tasks_done FROM agents ORDER BY created_at"),
-    q("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at"),
-    q("SELECT id,company,need,value,so,wo,stage,plan,marketing,created_at FROM projects ORDER BY created_at DESC LIMIT 20"),
-    q("SELECT * FROM activity ORDER BY created_at DESC LIMIT 60"),
+    director ? q("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at") : none,
+    director ? q("SELECT id,company,need,value,so,wo,stage,plan,marketing,created_at FROM projects ORDER BY created_at DESC LIMIT 20") : none,
+    director ? q("SELECT * FROM activity ORDER BY created_at DESC LIMIT 60") : none,
     one(`SELECT
       (SELECT count(*) FROM leads)::int AS leads,
       (SELECT count(*) FROM leads WHERE temperature='hot')::int AS hot,
@@ -90,9 +106,11 @@ app.get("/api/state", wrap(async (_req, res) => {
       (SELECT COALESCE(sum(value),0) FROM projects)::bigint AS revenue,
       (SELECT COALESCE(sum(monthly_cost),0) FROM agents)::bigint AS payroll`)
   ]);
-  res.json({ agents: agents.rows, approvals: approvals.rows, projects: projects.rows, activity: activity.rows,
-    stats: { ...stats, ai_spend_usd: await monthSpendUSD(), ai_budget_usd: parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0"),
-      provider: process.env.LLM_PROVIDER || "mock" }, stages: STAGES });
+  const money = director ? { revenue: stats.revenue, payroll: stats.payroll, ai_spend_usd: await monthSpendUSD(),
+    ai_budget_usd: parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0") } : { revenue: null, payroll: null, ai_spend_usd: null, ai_budget_usd: null };
+  res.json({ director, agents: director ? agents.rows : agents.rows.map(({ monthly_cost, ...a }) => a),
+    approvals: approvals.rows, projects: projects.rows, activity: activity.rows,
+    stats: { ...stats, ...money, provider: process.env.LLM_PROVIDER || "mock" }, stages: STAGES });
 }));
 
 app.get("/api/auth/check", admin, (_req, res) => res.json({ ok: true }));
@@ -115,8 +133,13 @@ app.post("/api/candidates", admin, wrap(async (req, res) => {
   const c = await newCandidate(req.body);
   res.status(202).json({ id: c.id, interview_link: `${process.env.PUBLIC_URL}/interview.html?t=${c.token}` });
 }));
-app.get("/api/interview/:token", wrap(async (req, res) => res.json(await getInterview(req.params.token))));
+app.get("/api/interview/:token", wrap(async (req, res) => {
+  if (limited("interview-get", req.ip, 60, 60 * 1000)) return res.status(429).json({ error: "Too many requests. Wait a minute and reload." });
+  res.json(await getInterview(req.params.token));
+}));
 app.post("/api/interview/:token", wrap(async (req, res) => {
+  if (limited("interview-post", req.ip, 10, 60 * 1000)) return res.status(429).json({ error: "Too many submissions. Wait a minute and try again." });
+  if (!Array.isArray(req.body?.answers)) throw Object.assign(new Error("answers must be a list"), { status: 400 });
   need(req.body, ["answers"]);
   await submitAnswers(req.params.token, req.body.answers.map(a => String(a).slice(0, 4000)), String(req.body.task_answer || "").slice(0, 8000));
   res.json({ ok: true });
@@ -150,7 +173,7 @@ app.get("/api/kb/search", admin, wrap(async (req, res) => res.json(await search(
 await connectDb();
 scheduleSelfCheck(health);
 const server = createServer(app);
-attach(new WebSocketServer({ server, path: "/ws" }));
+attach(new WebSocketServer({ server, path: "/ws", maxPayload: 4096 }), keyMatches);
 const port = parseInt(process.env.PORT || "8080", 10);
 server.listen(port, () => console.log(`Dia's office is open on http://localhost:${port} (AI: ${process.env.LLM_PROVIDER || "mock"})` +
   (db.ok ? "" : " - database not ready, the page will show setup steps") +

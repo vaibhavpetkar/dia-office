@@ -14,7 +14,7 @@ export async function startEngineering(projectId) {
   await status("neel", `Planning ${p.wo}…`);
   const kb = await context(p.need);
   const plan = await ask({
-    agent: "neel", tier: "smart", maxTokens: 1500,
+    agent: "neel", tier: "smart", maxTokens: 1500, need: ["tasks", "stack"],
     system: COMPANY() + " You are Neel, solution architect. Plan a real build the team can execute.",
     prompt: `Company knowledge:\n${kb}\n\nProject: ${p.company} needs ${p.need}. Budget ${p.value} INR.\n` +
       `Return {"stack":["..."],"architecture":"3-4 sentences","modules":["..."],` +
@@ -53,7 +53,7 @@ export async function setStage(projectId, stage) {
 export async function promote(p) {
   await status("pooja", `Planning campaign for ${p.company}`);
   const c = await ask({
-    agent: "pooja", tier: "fast",
+    agent: "pooja", tier: "fast", need: ["channels"],
     system: COMPANY() + " You are Pooja, digital marketing. Promote a project we just delivered (with client permission).",
     prompt: `Project: ${p.company} — ${p.need}.\nReturn {"channels":["..."],"audience":"...","monthly_budget_inr":number,"ad_copy":["3 short ads"]}`,
     mock: () => ({ channels: ["LinkedIn", "Google Ads", "Instagram"], audience: "SME owners in Maharashtra", monthly_budget_inr: 15000,
@@ -64,7 +64,7 @@ export async function promote(p) {
   await handoff("pooja", "isha", "Brief");
   await status("isha", "Writing case study…");
   const s = await ask({
-    agent: "isha", tier: "fast",
+    agent: "isha", tier: "fast", need: ["title", "case_study"],
     system: COMPANY() + " You are Isha, content writer.",
     prompt: `Write a case study for: ${p.company} — ${p.need}. Return {"title":"...","case_study":"150 words","linkedin_post":"under 80 words"}`,
     mock: () => ({ title: `How ${p.company} went digital`, case_study: `${p.company} needed ${p.need}. Inveon delivered it end to end.`,

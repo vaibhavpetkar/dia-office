@@ -86,7 +86,7 @@ export async function chat(message, history = []) {
   else {
     const kb = await context(message, 3);
     out = await ask({
-      agent: "dia", tier: "fast", maxTokens: 700,
+      agent: "dia", tier: "fast", maxTokens: 700, need: ["reply"],
       system: COMPANY() + ` You are Dia, the warm, cheerful owner-assistant who runs this virtual office. ` +
         `You talk to the human director. Answer in 1-3 short spoken sentences, friendly and specific, using the office data. ` +
         `You may suggest ONE action for the director to confirm. Never claim an action is done; say you've prepared it.`,

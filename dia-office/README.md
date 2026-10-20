@@ -82,6 +82,18 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | POST | `/api/kb`, GET `/api/kb`, GET `/api/kb/search?q=` | director key |
 | GET | `/api/health`, POST `/api/health/retry` | anyone (setup status only, no data) |
 
+## Tests
+
+`npm test` starts the office in mock mode against a throwaway database and runs every flow end to end (lead to promoted project, AI hire, interview link, knowledge base, chat, self-check). It **wipes** the database in `TEST_DATABASE_URL` (default `postgres://dia:dia@localhost:5432/dia_test`), so point it at an empty test database only. GitHub Actions runs the same tests on every pull request.
+
+## Database changes
+
+SQL files in `src/migrations/` run once each, in order, on startup. To change the database, add a new numbered file such as `004_add_x.sql`; never edit one that already ran.
+
+## Privacy
+
+Anyone who opens the page sees the office floor and counts. Client names, decisions, money and the activity feed are only sent after the director key is entered, over the API and the live updates. Interview links expire after 14 days, and wrong director keys are rate-limited.
+
 ## Deploying
 Run it on one small server (EC2 or a VPS) behind nginx with HTTPS, using `npm start` under pm2 or systemd. Use RDS or the same server for Postgres. Keep `ADMIN_TOKEN` secret, and put the office behind HTTPS before using it with real candidates.
 

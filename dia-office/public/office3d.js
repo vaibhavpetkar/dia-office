@@ -378,7 +378,8 @@ const clock = new THREE.Clock(), v = new THREE.Vector3();
 const VIEW_DIR = new THREE.Vector3(0, 0.66, 0.75).normalize(), HOME = new THREE.Vector3(0, 0.6, 0.6);
 function homeDistance() {
   const v = THREE.MathUtils.degToRad(camera.fov), hfov = 2 * Math.atan(Math.tan(v / 2) * camera.aspect);
-  return Math.max(13.2 / Math.tan(hfov / 2), 10.5 / Math.tan(v / 2)) * 0.98;
+  // The front rows sit closer to the camera and look wider, hence the extra 25% on width.
+  return Math.max(13.2 * 1.25 / Math.tan(hfov / 2), 10.5 / Math.tan(v / 2)) * 0.98;
 }
 let closeUp = false;
 function home() { controls.target.copy(HOME); camera.position.copy(HOME).addScaledVector(VIEW_DIR, homeDistance()); }
