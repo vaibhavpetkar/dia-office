@@ -21,7 +21,9 @@
     </div>
   </section>
 
-  <div class="main">
+  <section class="setup" id="setup" hidden aria-live="polite"></section>
+
+  <div class="main" id="main">
     <section class="floor" id="floor" aria-label="Office floor"></section>
     <aside class="rail">
       <div class="card" id="leadCard" hidden>
@@ -47,12 +49,25 @@
           <button class="btn primary">Give to Asha</button><p class="msg" id="candMsg"></p>
         </form>
       </div>
+      <div class="card" id="startCard" hidden>
+        <h3>Getting started <button class="btn" id="bHideStart" type="button">Hide</button></h3>
+        <ul class="steps" id="startSteps"></ul>
+      </div>
       <div class="card">
         <h3>Dia needs your decision <span class="count" id="apCount" data-n="0">0</span></h3>
         <div id="approvals"></div>
       </div>
       <div class="card"><h3>Selected</h3><div id="who"></div></div>
       <div class="card"><h3>Projects <span class="pill" id="projCount">0</span></h3><div id="projects"></div></div>
+      <div class="card" id="kbCard">
+        <h3>Company knowledge <button class="btn" id="bKb" type="button">+ Add document</button></h3>
+        <form class="form" id="kbForm" hidden>
+          <label for="kTitle">Title</label><input id="kTitle" required placeholder="Leave policy">
+          <label for="kContent">Text</label><textarea id="kContent" class="tall" required placeholder="18 paid leaves a year. Working hours 10am–7pm IST."></textarea>
+          <button class="btn primary">Teach Dia</button><p class="msg" id="kbMsg"></p>
+        </form>
+        <div id="kbList"></div>
+      </div>
       <div class="card"><h3>Office activity</h3><div class="feed" id="feed" aria-live="polite"></div></div>
     </aside>
   </div>
@@ -174,10 +189,87 @@ async function fly(from,to,label){
   setTimeout(()=>d.remove(),1250);
 }
 
+/* ---------- Setup screen ---------- */
+const setupEl=document.getElementById("setup"),mainEl=document.getElementById("main");
+let H={db:{ok:true},admin_token:"ok",provider:"mock"};
+async function health(){try{H=await (await fetch("/api/health")).json()}catch{H={offline:true,db:{ok:false}}}return H}
+function showSetup(){
+  mainEl.hidden=true;setupEl.hidden=false;
+  document.getElementById("prov").textContent=H.offline?"server offline":"setup needed";
+  const win=H.platform==="win32";
+  const why=H.offline?`<div class="why"><b>The office server is not running.</b><span>Open a terminal in the <code>dia-office</code> folder and run <code>npm start</code>. This page reconnects on its own.</span></div>`
+    :`<div class="why"><b>${esc(H.db.hint||"The database is not reachable.")}</b><code>${esc(H.db.error||"")}</code></div>`;
+  setupEl.innerHTML=`<div><h2>Let's connect Dia's database</h2>
+    <p>The office keeps agents, leads, approvals and company knowledge in Postgres with the pgvector extension. Pick one way to get a database, put its address in <b>DATABASE_URL</b> in your <code>.env</code> file, and press <b>Try again</b>. No restart needed.</p></div>
+    ${why}
+    <div class="opts">
+      <div class="opt rec"><span class="tagline">Recommended · no Docker</span><h3>Free cloud database</h3>
+        <ol><li>Sign up at <a href="https://neon.tech" target="_blank" rel="noopener">neon.tech</a> (or <a href="https://supabase.com" target="_blank" rel="noopener">supabase.com</a>) and create a project.</li>
+        <li>Copy its connection string.</li>
+        <li>In the <code>dia-office</code> folder run:</li></ol>
+        <pre>npm run setup -- "postgres://USER:PASS@HOST/neondb?sslmode=require"</pre></div>
+      <div class="opt"><span class="tagline">If Docker works</span><h3>Docker</h3>
+        <ol><li>Start Docker Desktop.</li><li>In the <code>dia-office</code> folder run:</li></ol>
+        <pre>docker compose up -d</pre><p>The default DATABASE_URL already points at it.</p></div>
+      <div class="opt"><span class="tagline">${win?"Windows":"Linux / WSL"}</span><h3>Postgres on this computer</h3>
+        <ol><li>${win?"In WSL (Ubuntu):":"Install Postgres 16 and pgvector:"}</li></ol>
+        <pre>sudo apt install postgresql-16-pgvector</pre>
+        <ol start="2"><li>Create user and database <code>dia</code> / password <code>dia</code>.</li></ol></div>
+    </div>
+    <div class="row"><button class="btn primary" id="bRetry" type="button">Try again</button><span class="msg" id="retryMsg"></span></div>
+    <p class="note" style="margin:0">Tip: keep <code>LLM_PROVIDER=mock</code> while you try things out. It runs every flow with free canned answers.</p>`;
+  document.getElementById("bRetry").onclick=retry;
+}
+async function retry(){
+  const m=document.getElementById("retryMsg");if(m){m.className="msg";m.textContent="Checking…"}
+  try{const r=await fetch("/api/health/retry",{method:"POST"});const j=await r.json();
+    if(r.ok){await start();return}
+    H.db=j.db;H.offline=false;showSetup();const m2=document.getElementById("retryMsg");m2.textContent="Still not connected. Check the message above.";m2.classList.add("err");
+  }catch{H.offline=true;showSetup()}
+}
+
+/* ---------- Getting started + knowledge ---------- */
+let unlocked=false,KB=null,hideStart=false;try{hideStart=localStorage.getItem("diaHideStart")==="1"}catch{}
+function renderStart(){
+  const s=S.stats||{},card=document.getElementById("startCard");
+  const items=[
+    [true,"Database connected",""],
+    [H.admin_token==="ok"?unlocked:false,"Unlock with the director key",H.admin_token==="ok"?"Paste ADMIN_TOKEN from your .env into the key box above.":"ADMIN_TOKEN is not set. Run <code>npm run setup</code> and restart.",H.admin_token!=="ok"],
+    [(KB?.length||0)>0,"Teach Dia about the company","Add a policy or price list under Company knowledge."],
+    [(s.leads||0)>0,"Give Kabir a lead","Press + New lead. Mock mode answers instantly and for free."],
+    [S.agents.some(a=>a.id.startsWith("c")),"Hire someone","Press + New candidate and choose AI agent for an automatic interview."]];
+  const done=items.every(i=>i[0]);
+  card.hidden=hideStart||done;
+  document.getElementById("startSteps").innerHTML=items.map(([ok,t,sub,warn])=>`<li class="${ok?"done":warn?"warn":""}"><div>${t}${!ok&&sub?`<span>${sub}</span>`:""}</div></li>`).join("");
+}
+document.getElementById("bHideStart").onclick=()=>{hideStart=true;try{localStorage.setItem("diaHideStart","1")}catch{};renderStart()};
+async function loadKb(){
+  const box=document.getElementById("kbList");
+  if(!unlocked){KB=null;box.innerHTML='<p class="empty">Unlock with the director key to see and add documents. Agents read these before they answer.</p>';renderStart();return}
+  try{KB=await api("/api/kb")}catch(e){box.innerHTML=`<p class="empty">${esc(e.message)}</p>`;return}
+  box.innerHTML=KB.length?`<ul class="docs">${KB.map(d=>`<li><span>${esc(d.title)}</span><small>${d.chunks} part${d.chunks>1?"s":""}</small></li>`).join("")}</ul>`
+    :'<p class="empty">No documents yet. Add policies, price lists, past proposals or hiring criteria.</p>';
+  renderStart();
+}
+document.getElementById("bKb").onclick=()=>{const f=document.getElementById("kbForm");f.hidden=!f.hidden;if(!f.hidden)document.getElementById("kTitle").focus()};
+document.getElementById("kbForm").onsubmit=async e=>{
+  e.preventDefault();const m=document.getElementById("kbMsg");m.className="msg";m.textContent="Saving…";
+  try{const r=await api("/api/kb",{method:"POST",body:JSON.stringify({title:v("kTitle"),content:document.getElementById("kContent").value})});
+    e.target.reset();m.textContent=`Saved in ${r.chunks} part${r.chunks>1?"s":""}. Agents will use it from now on.`;loadKb()}
+  catch(err){m.textContent=err.message;m.classList.add("err")}
+};
+async function checkKey(){
+  if(!KEY){unlocked=false;return}
+  try{await api("/api/auth/check");unlocked=true}catch{unlocked=false}
+  document.getElementById("bKey").textContent=unlocked?"Unlocked":"Unlock";
+}
+
 /* ---------- Data ---------- */
 async function load(){
-  const r=await fetch("/api/state");S=await r.json();
-  renderFloor();renderKpis();renderApprovals();renderProjects();renderFeed();renderWho();
+  const r=await fetch("/api/state");
+  if(r.status===503){await health();showSetup();throw new Error("setup")}
+  S=await r.json();setupEl.hidden=true;mainEl.hidden=false;
+  renderFloor();renderKpis();renderApprovals();renderProjects();renderFeed();renderWho();renderStart();
 }
 let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(load,400)};
 function connect(){
@@ -194,14 +286,16 @@ function connect(){
     if(m.type==="approval_done"){S.approvals=S.approvals.filter(a=>a.id!==m.id);renderApprovals()}
     if(m.type==="refresh")refreshSoon();
   };
-  ws.onclose=()=>{document.getElementById("prov").textContent="reconnecting…";setTimeout(()=>{connect();load()},2000)};
+  ws.onclose=()=>{document.getElementById("prov").textContent="reconnecting…";setTimeout(()=>{connect();load().catch(()=>{})},2000)};
 }
 
 /* ---------- Director controls ---------- */
 const keyIn=document.getElementById("key");keyIn.value=KEY;
 document.getElementById("bKey").onclick=async()=>{
   KEY=keyIn.value.trim();try{localStorage.setItem("diaKey",KEY)}catch{}
-  try{await api("/api/auth/check");document.getElementById("bKey").textContent="Unlocked"}catch(e){document.getElementById("bKey").textContent="Wrong key"}
+  try{await api("/api/auth/check");unlocked=true;document.getElementById("bKey").textContent="Unlocked"}
+  catch(e){unlocked=false;document.getElementById("bKey").textContent=/ADMIN_TOKEN is not set/.test(e.message)?"Key not set":"Wrong key"}
+  loadKb();
 };
 document.getElementById("bLead").onclick=()=>{const c=document.getElementById("leadCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("lCompany").focus()};
 document.getElementById("bCand").onclick=()=>{const c=document.getElementById("candCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("cName").focus()};
@@ -219,7 +313,13 @@ document.getElementById("candForm").onsubmit=async e=>{
 };
 
 document.getElementById("diaMini").innerHTML=diaSVG();
-load().then(connect).catch(e=>{document.getElementById("prov").textContent="server offline: "+e.message});
+let wsOn=false;
+async function start(){
+  try{await health();if(!H.db.ok){showSetup();return}
+    await load();await checkKey();loadKb();if(!wsOn){wsOn=true;connect()}}
+  catch(e){if(e.message!=="setup"){H={offline:true,db:{ok:false}};showSetup();setTimeout(start,4000)}}
+}
+start();
 </script>
 </body>
 </html>

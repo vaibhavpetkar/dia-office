@@ -15,16 +15,29 @@ Every AI call is recorded with its token count and cost. **AI spend** shows at t
 
 ## Run it on your computer (free)
 
+You need **Node 20 or newer** and a **Postgres database with pgvector**. Docker is the easiest way to get the database, but it is not required.
+
 ```bash
-cp .env.example .env            # set ADMIN_TOKEN to a long random string
-docker compose up -d            # Postgres with pgvector
 npm install
-npm start                       # http://localhost:8080
+npm run setup            # creates .env with a random ADMIN_TOKEN and prints it
+npm start                # http://localhost:8080
 ```
 
-Open the page, enter your `ADMIN_TOKEN` in **Director key**, and click **Unlock**. Then add a lead or a candidate.
+Open the page, paste the printed key into **Director key**, and click **Unlock**. Then add a lead or a candidate.
 
-`LLM_PROVIDER=mock` runs the whole office with canned answers and no AI cost. Use it to check that everything works.
+If the database isn't reachable, the page shows a setup screen that says what went wrong and how to fix it. Fix `DATABASE_URL` in `.env` and press **Try again**. You don't need to restart.
+
+### Get a database
+
+| Option | Steps |
+|---|---|
+| **Free cloud database (no Docker, works on Windows)** | Create a free project on [Neon](https://neon.tech) or [Supabase](https://supabase.com). Both include pgvector. Copy the connection string and run `npm run setup -- "postgres://USER:PASS@HOST/DB?sslmode=require"` |
+| **Docker** | `docker compose up -d`. The default `DATABASE_URL` already points at it. |
+| **Postgres on Linux or WSL** | `sudo apt install postgresql-16-pgvector`, then create user and database `dia` with password `dia`. |
+
+On Windows, run the commands in PowerShell. `npm run setup` takes the place of `cp .env.example .env`.
+
+`LLM_PROVIDER=mock` runs the whole office with canned answers and no AI cost. Mock answers are repeatable: the same lead or candidate always gets the same score, so you can demo a flow twice and get the same result.
 
 ### Free local AI (Ollama)
 ```bash
@@ -66,7 +79,8 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | GET/POST | `/api/interview/:token` | the candidate (secret link) |
 | POST | `/api/approvals/:id` `{decision:"approve"\|"reject"}` | director key |
 | POST | `/api/projects/:id/stage` `{stage}` | director key |
-| POST | `/api/kb`, GET `/api/kb/search?q=` | director key |
+| POST | `/api/kb`, GET `/api/kb`, GET `/api/kb/search?q=` | director key |
+| GET | `/api/health`, POST `/api/health/retry` | anyone (setup status only, no data) |
 
 ## Deploying
 Run it on one small server (EC2 or a VPS) behind nginx with HTTPS, using `npm start` under pm2 or systemd. Use RDS or the same server for Postgres. Keep `ADMIN_TOKEN` secret, and put the office behind HTTPS before using it with real candidates.

@@ -27,6 +27,12 @@ export async function search(query, k = 4) {
   return rows;
 }
 
+// One row per document, for the office page.
+export async function listDocs() {
+  const { rows } = await q("SELECT title, count(*)::int AS chunks, min(id) AS id FROM kb_chunks GROUP BY title ORDER BY min(id) DESC");
+  return rows;
+}
+
 // Text block to paste into a prompt.
 export async function context(query, k = 4) {
   const rows = await search(query, k).catch(() => []);
