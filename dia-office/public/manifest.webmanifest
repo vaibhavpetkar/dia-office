@@ -1,0 +1,14 @@
+{
+  "name": "Dia · Inveon",
+  "short_name": "Dia",
+  "description": "Talk to Dia and give her work. She splits it into jobs for the teams and brings you the results.",
+  "start_url": "/app.html",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eef2ee",
+  "theme_color": "#0f6e6a",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

@@ -50,6 +50,8 @@ function toAction(a, snap) {
   const inv = snap.invoices.find(x => x.id === Number(a.invoice_id));
   if (a.type === "paid" && inv && inv.status === "sent")
     return { label: `Mark ${inv.number} as paid`, method: "POST", path: `/api/invoices/${inv.id}/paid`, body: {} };
+  if (a.type === "request" && a.brief)
+    return { label: `Give the teams this job: ${String(a.brief).slice(0, 60)}${String(a.brief).length > 60 ? "…" : ""}`, method: "POST", path: "/api/v1/requests", body: { brief: String(a.brief).slice(0, 4000) } };
   if (a.type === "repair") return { label: "Draft a code fix for my latest error", method: "POST", path: "/api/dia/repair", body: {} };
   if (a.type === "selfcheck") return { label: "Run my self-check and fix what I can", method: "POST", path: "/api/dia/selfcheck", body: {} };
   return null;
@@ -61,6 +63,8 @@ function mockReply(msg, snap) {
   const ap = snap.approvals;
   if (/^(hi|hello|hey|namaste|namaskar)\b/.test(m) || /how are you/.test(m))
     return { reply: `Namaskar! I'm Dia. The office is running: ${s.team} people on the team, ${s.leads} leads, ${ap.length} decision${ap.length === 1 ? "" : "s"} waiting for you. What would you like to do?` };
+  if (/^(please\s+)?(research|make|create|generate|design|draw|build|write|plan|prepare|find out)\b/.test(m) && !/\blead\b|ticket/.test(m))
+    return { reply: "I'll read this, split it into jobs for the right teams and bring you the results. Press the button to start.", action: { type: "request", brief: msg.trim() } };
   if (/approv|decision|waiting|pending/.test(m)) {
     if (!ap.length) return { reply: "Nothing is waiting for you right now. I'll ask here before any hire or new project." };
     const first = ap[0];
@@ -150,7 +154,7 @@ export async function chat(message, history = [], lang = "en") {
         `Return {"reply":"...","actions":[] of up to 5 actions, each one of: {"type":"approve"|"reject","id":number} | {"type":"stage","project_id":number,"stage":"${STAGES.join("|")}"} | ` +
         `{"type":"lead","company":"...","need":"...","budget":number} | {"type":"candidate","name":"...","role":"...","dept":"${DEPTS.join("|")}","kind":"human|ai"} | ` +
         `{"type":"ticket","customer":"...","subject":"...","message":"..."} | {"type":"paid","invoice_id":number} | ` +
-        `{"type":"doc","title":"...","content":"..."} | {"type":"selfcheck"} | {"type":"repair"}}`,
+        `{"type":"doc","title":"...","content":"..."} | {"type":"request","brief":"the full requirement, for work the teams deliver: research, images, videos, builds, content"} | {"type":"selfcheck"} | {"type":"repair"}}`,
       mock: () => mockGoal(message, snap)
     });
   }

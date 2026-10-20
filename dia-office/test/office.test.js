@@ -238,3 +238,46 @@ test("sslmode in DATABASE_URL becomes a verified TLS option without the pg warni
     { connectionString: "postgres://u:p@h/db?channel_binding=require", ssl: { rejectUnauthorized: true } });
   assert.deepEqual(connectionOptions("postgres://u:p@h/db"), { connectionString: "postgres://u:p@h/db" });
 });
+
+test("Dia splits a request into department tasks and every team delivers", async () => {
+  const brief = "Research EV charging in Pune, make a poster, plan a 30-second reel, build a landing page and write a LinkedIn post";
+  const made = await call("/api/v1/requests", { method: "POST", body: { brief } });
+  assert.equal(made.status, 202);
+  const r = await waitFor(async () => { const x = (await call(`/api/v1/requests/${made.body.id}`)).body; return x.status === "done" && x; }, "request done");
+  assert.deepEqual(r.tasks.map(t => t.kind), ["research", "image", "video", "build", "content"]);
+  assert.ok(r.tasks.every(t => t.status === "done" && t.output && t.agent), "every task has an owner and a result");
+  assert.ok(r.tasks[0].output.sections.length >= 3);
+  assert.match(r.tasks[3].output.starter_html, /^<!doctype html>/i);
+  // Pictures open from a signed link without a key, and not without the signature.
+  const img = r.tasks[1].output;
+  const pic = await fetch(BASE + img.url);
+  assert.equal(pic.status, 200); assert.equal(pic.headers.get("content-type"), "image/svg+xml");
+  assert.match(pic.headers.get("content-security-policy"), /default-src 'none'/);
+  assert.equal((await fetch(`${BASE}/api/v1/media/${img.media_id}?sig=${"x".repeat(32)}`)).status, 401);
+  const listed = (await call("/api/v1/requests")).body.find(x => x.id === made.body.id);
+  assert.equal(listed.tasks_done, 5);
+  assert.equal((await call("/api/v1/requests", { method: "POST", body: { brief: "hi" } })).status, 400);
+});
+
+test("Dia offers to hand a job to the teams from chat", async () => {
+  const r = (await call("/api/v1/chat", { method: "POST", body: { message: "Research the tea market in Assam and make a poster" } })).body;
+  assert.equal(r.actions[0].path, "/api/v1/requests");
+  assert.match(r.actions[0].body.brief, /tea market/);
+});
+
+test("app keys: made by the director, work on the app API only, and can be switched off", async () => {
+  assert.equal((await call("/api/v1/openapi.json", { key: null })).body.openapi, "3.0.3");
+  assert.equal((await call("/api/v1/me", { key: null })).status, 401);
+  const k = (await call("/api/v1/keys", { method: "POST", body: { name: "Test phone" } })).body;
+  assert.match(k.key, /^dia_/);
+  const me = (await call("/api/v1/me", { key: k.key })).body;
+  assert.deepEqual([me.role, me.name], ["app", "Test phone"]);
+  assert.equal((await call("/api/v1/approvals", { key: k.key })).status, 200);
+  assert.equal((await call("/api/v1/chat", { method: "POST", key: k.key, body: { message: "hello" } })).status, 200);
+  assert.equal((await call("/api/v1/keys", { key: k.key })).status, 401, "an app key can't make more keys");
+  assert.equal((await call("/api/records/leads", { key: k.key })).status, 401, "nor open the office records");
+  const keys = (await call("/api/v1/keys")).body;
+  assert.ok(keys.some(x => x.id === k.id && x.prefix === k.key.slice(0, 8) && !("hash" in x)));
+  assert.equal((await call(`/api/v1/keys/${k.id}`, { method: "DELETE" })).status, 200);
+  assert.equal((await call("/api/v1/me", { key: k.key })).status, 401);
+});

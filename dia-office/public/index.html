@@ -20,6 +20,7 @@
       <button class="btn primary" id="bLead">+ New lead</button>
       <button class="btn primary" id="bCand">+ New candidate</button>
       <button class="btn primary" id="bTicket">+ Support ticket</button>
+      <a class="btn" href="app.html" target="_blank" rel="noopener" title="Talk to Dia and give her jobs from your phone or computer">Dia app ↗</a>
     </div>
   </section>
 
@@ -47,6 +48,7 @@
           <button type="button" role="tab" data-rec="leads" aria-selected="true">Leads</button>
           <button type="button" role="tab" data-rec="candidates" aria-selected="false">Candidates</button>
           <button type="button" role="tab" data-rec="projects" aria-selected="false">Projects</button>
+          <button type="button" role="tab" data-rec="jobs" aria-selected="false">Jobs</button>
           <button type="button" role="tab" data-rec="decisions" aria-selected="false">Decisions</button>
           <button type="button" role="tab" data-rec="tickets" aria-selected="false">Tickets</button>
           <button type="button" role="tab" data-rec="invoices" aria-selected="false">Invoices</button>
@@ -439,6 +441,10 @@ const REC={
     rows,r=>`${r.plan?`<h4>Build plan</h4><pre class="rep">${esc(planText(r.plan))}</pre>`:""}${r.marketing?`<h4>Marketing drafts</h4>
       <p><b>${esc(r.marketing.content?.title||"")}</b></p><p>${esc(r.marketing.content?.case_study||"")}</p><p><i>LinkedIn:</i> ${esc(r.marketing.content?.linkedin_post||"")}</p>
       ${r.marketing.review?"":`<div class="row"><button type="button" class="btn yes" data-mk="${r.id}" data-d="approve">Approve for publishing</button><button type="button" class="btn no" data-mk="${r.id}" data-d="reject">Ask Isha to rewrite</button></div>`}`:""}`||'<p class="empty">No plan yet.</p>')},
+  jobs:{path:"/api/v1/requests",render:rows=>table([["Job",r=>`<b>${esc(r.title||"Planning…")}</b><br><small>${esc(r.brief.slice(0,140))}</small>`],
+    ["Tasks done",r=>`${r.tasks_done} / ${r.tasks}`],["Status",r=>pill(r.status,{planning:"marigold",working:"eng",done:"ok",failed:"kumkum"}[r.status]||"eng")],["From",r=>esc(r.source)],["Asked",r=>when(r.created_at)],
+    ["",r=>`<a class="btn" href="app.html#job=${r.id}" target="_blank" rel="noopener">Open results</a>`]],rows)+
+    '<p class="note">Tell Dia what you need ("research … and make a poster and a reel"). She splits it into jobs for the teams; results open in the Dia app.</p>'},
   decisions:{path:"/api/records/decisions",render:rows=>table([["Decision",r=>esc(r.title)],["Kind",r=>esc(r.kind.replace("_"," "))],["Result",r=>pill(r.status,statCol[r.status]||"eng")],["Asked",r=>when(r.created_at)],["Decided",r=>when(r.decided_at)]],rows)},
   tickets:{path:"/api/records/tickets",render:rows=>table([["Client",r=>`<b>${esc(r.customer)}</b><br><small>${esc(r.email||"")}</small>`],["Subject",r=>esc(r.subject)],
     ["Type",r=>esc(r.category||"…")],["Priority",r=>r.priority?pill(r.priority,r.priority==="high"?"kumkum":"eng"):"…"],["Status",r=>pill(r.status.replace(/_/g," "),statCol[r.status]||"eng")],["Received",r=>when(r.created_at)]],

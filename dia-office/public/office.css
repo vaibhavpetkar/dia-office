@@ -291,3 +291,4 @@ table.inv tr.tot td{font-weight:700;border-bottom:0;border-top:2px solid var(--l
 .floors .btn{padding:4px 10px;font-size:.78rem}
 .floors .btn[aria-pressed="true"]{background:var(--peacock);color:#fff;border-color:var(--peacock)}
 @media (max-width:640px){.floors{flex-direction:row;flex-wrap:wrap}}
+a.btn{text-decoration:none;display:inline-block}

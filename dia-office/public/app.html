@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Dia</title>
+<meta name="description" content="Talk to Dia and give her work. She splits it into jobs for the teams and brings you the results.">
+<meta name="theme-color" content="#0f6e6a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Mukta:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="bar">
+  <span class="face" id="face"><canvas width="112" height="112" aria-hidden="true"></canvas></span>
+  <div class="who"><h1>Dia</h1><p id="state">Your virtual owner</p></div>
+  <div class="langs" role="group" aria-label="Language">
+    <button type="button" data-lang="en" aria-pressed="true">EN</button><button type="button" data-lang="hi" aria-pressed="false">हिं</button><button type="button" data-lang="mr" aria-pressed="false">मरा</button>
+  </div>
+  <button type="button" class="icon" id="bVoice" aria-pressed="true" title="Dia speaks her answers">🔊</button>
+</header>
+
+<main>
+  <section id="connect" class="pane" hidden>
+    <div class="card">
+      <h2>Connect to Dia</h2>
+      <p>Paste the <b>director key</b> (ADMIN_TOKEN from the office's <code>.env</code>), or an <b>app key</b> made in Settings on another device.</p>
+      <form id="fKey"><input id="key" type="password" autocomplete="off" placeholder="Key" required aria-label="Key"><button class="btn primary">Connect</button></form>
+      <p class="err" id="keyErr" role="alert"></p>
+    </div>
+  </section>
+
+  <section id="talk" class="pane" hidden aria-label="Talk to Dia">
+    <div class="msgs" id="msgs" aria-live="polite"></div>
+    <form class="compose" id="fChat">
+      <button type="button" class="icon mic" id="bMic" title="Speak" hidden>🎤</button>
+      <input id="msg" placeholder="Ask Dia, or tell her what you need…" autocomplete="off" aria-label="Message">
+      <button class="btn primary">Send</button>
+    </form>
+  </section>
+
+  <section id="jobs" class="pane" hidden aria-label="Jobs">
+    <form class="card newjob" id="fJob">
+      <label for="brief"><b>What do you need?</b></label>
+      <textarea id="brief" rows="3" placeholder="e.g. Research the EV charging market in Pune, make a poster and plan a 30-second reel" required></textarea>
+      <div class="row"><button type="button" class="icon mic" id="bMicJob" title="Speak" hidden>🎤</button><button class="btn primary">Give to Dia</button></div>
+    </form>
+    <div id="jobList"></div>
+  </section>
+
+  <section id="job" class="pane" hidden aria-label="Job results"></section>
+
+  <section id="decisions" class="pane" hidden aria-label="Decisions"></section>
+
+  <section id="settings" class="pane" hidden aria-label="Settings"></section>
+</main>
+
+<nav class="tabs" id="tabs" hidden>
+  <button type="button" data-tab="talk"><span>💬</span>Talk</button>
+  <button type="button" data-tab="jobs"><span>🗂️</span>Jobs</button>
+  <button type="button" data-tab="decisions"><span>✅</span>Decisions<b id="nDec" hidden></b></button>
+  <button type="button" data-tab="settings"><span>⚙️</span>Settings</button>
+</nav>
+
+<script src="talkingface.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
