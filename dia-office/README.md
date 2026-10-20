@@ -14,6 +14,7 @@ Inveon Technologies' virtual office, run by **Dia**. AI agents work in HR, Sales
 | **Support** | A ticket (form, help-desk webhook or "ticket from Acme: …" in chat) → Kavya reads company knowledge and drafts a reply → **you approve** → the client is emailed. Bugs are flagged to Tara |
 | **Finance** | When you approve a project, Arjun drafts a 50% advance invoice with 18% GST; at go-live he drafts the balance → **you approve** each before it is emailed → mark it paid when money arrives. The *Profit* tab shows this month's cash in, team billing and AI spend |
 | **Goals** | Give Dia several jobs in one message ("add lead X needs Y; ticket from Z: … then check yourself") and she lines up one button per team, plus *Do all* |
+| **Jobs** | Tell Dia what you need ("research EV charging in Pune, make a poster and plan a 30-second reel"), in the office chat or the **Dia app**. She splits it into tasks for the right teams: research brief (Meera, or your R&D hire), picture (Isha, or your Design hire), video storyboard (Pooja), build plan with a starter page you can preview (Neel), and posts and emails (Isha). Results open in the app, and each piece of work shows in the office |
 | **HR** | Candidate → Asha writes the interview and task → humans answer on a link, AI-agent candidates are interviewed automatically → Asha scores the answers → Vikram, the reporting manager, reviews → **you approve** → Rohan emails the offer and company policies → the new member appears in the office and billing starts |
 
 Every AI call is recorded with its token count and cost. **AI spend** shows at the top, and AI pauses when it reaches `MONTHLY_AI_BUDGET_USD`.
@@ -72,6 +73,14 @@ Pick **EN / हिं / मरा** under her name. Dia answers in that language
 | Browser (free) | Open the office in **Microsoft Edge**. Edge includes natural voices: Neerja (English), Swara (Hindi), Aarohi (Marathi) | Natural. Chrome on Windows usually has no Marathi voice; the page tells you when one is missing |
 | Azure neural (any browser) | Create a Speech resource in Azure, then set `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` in `.env` | The same natural voices on every browser and phone, and lip-sync follows the real audio |
 
+## The Dia app (phone and desktop)
+
+Open **`/app.html`** (or press **Dia app ↗** in the office). It's made for a phone and works on a laptop too: talk or type to Dia in English, Hindi or Marathi, give her jobs and watch each team deliver, see pictures, storyboards and starter pages, and approve decisions. On a phone use **Add to Home Screen**; in Chrome or Edge on a computer use the install icon in the address bar.
+
+Connect with the director key, then go to **Settings → App keys** to make a separate key for each phone or laptop. App keys can talk to Dia, give jobs and make decisions, but can't open the office records or make more keys, and you can switch one off at any time.
+
+Pictures: free test posters by default. Set `IMAGE_PROVIDER=bedrock` for real pictures from Amazon Nova Canvas (about $0.04 each, counted in the AI budget). Research comes from the AI's own knowledge and your company knowledge, not the live web yet, and each brief lists what to check. Videos are storyboards for now.
+
 ## Teach Dia about your company (RAG)
 
 Add policies, past proposals, price lists and hiring criteria. Agents read them before answering.
@@ -106,6 +115,7 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | GET | `/api/sandbox/:token`, `/sandbox/:token/` (the running site), `/sandbox.html?s=:token` (viewer) | anyone with the link |
 | POST | `/api/kb`, GET `/api/kb`, GET `/api/kb/search?q=` | director key |
 | GET | `/api/health`, POST `/api/health/retry` | anyone (setup status only, no data) |
+| | **App API** `/api/v1/…`: `me`, `chat`, `tts`, `requests` (POST a job, GET list, GET `/:id`, POST `/:id/retry`), `media/:id`, `approvals`, `keys`. Full description at `/api/v1/openapi.json` | director key or an app key (`keys` is director only) |
 
 ## Tests
 

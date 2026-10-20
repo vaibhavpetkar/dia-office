@@ -77,6 +77,17 @@ The live updates use WebSockets on `/ws`; Caddy passes them through without extr
 
 Open `https://office.inveon.in`, paste `ADMIN_TOKEN` from `.env` and press Unlock.
 
+## The app API for phone and desktop apps
+
+Everything the Dia app does goes through `https://office.inveon.in/api/v1` (described at `/api/v1/openapi.json`), so the same server is the backend for a phone app, a desktop app or any other program. Nothing extra to deploy:
+
+1. Open `https://office.inveon.in/app.html`, connect with the director key, go to **Settings → App keys** and make one key per device. Each key is shown once; switch it off there if a device is lost.
+2. In the app, send `Authorization: Bearer dia_...` with every call. Pictures come back as signed links that work in an `<img>` without a key.
+3. On a phone you can also just open `/app.html` and **Add to Home Screen**; it installs like an app.
+4. For pictures from Amazon Nova Canvas set `IMAGE_PROVIDER=bedrock` and `IMAGE_AWS_REGION=us-east-1` (Nova Canvas isn't in Mumbai), and enable the model in that region's Bedrock console. The IAM policy above already covers it.
+
+Keep HTTPS on (Caddy does this); app keys must never travel over plain HTTP.
+
 ## 4. Email (SES)
 
 Verify the domain `inveon.in` in SES (add the DKIM records it shows), then request production access so you can email clients and candidates who haven't verified their address. Until then SES only sends to verified addresses; the office logs every email it drafts either way.

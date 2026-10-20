@@ -1,0 +1,439 @@
+{
+ "openapi": "3.0.3",
+ "info": {
+  "title": "Dia API",
+  "version": "1.0.0",
+  "description": "Talk to Dia and give her work from a phone app, a desktop app or any other program. Send `Authorization: Bearer <key>` with the director key (ADMIN_TOKEN) or an app key made in the Dia app under Settings. App keys can do everything here except manage keys."
+ },
+ "servers": [
+  {
+   "url": "/api/v1"
+  }
+ ],
+ "components": {
+  "securitySchemes": {
+   "bearer": {
+    "type": "http",
+    "scheme": "bearer"
+   }
+  },
+  "schemas": {
+   "Task": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "seq": {
+      "type": "integer"
+     },
+     "kind": {
+      "type": "string",
+      "enum": [
+       "research",
+       "image",
+       "video",
+       "build",
+       "content"
+      ]
+     },
+     "dept": {
+      "type": "string"
+     },
+     "agent": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "detail": {
+      "type": "string"
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "queued",
+       "working",
+       "done",
+       "failed"
+      ]
+     },
+     "output": {
+      "type": "object",
+      "description": "research: {summary, sections[{heading, body}], key_points[], check[]}; image: {url, prompt, caption}; video: {title, length_seconds, format, scenes[{seconds, visual, voiceover, on_screen_text}], music, call_to_action}; build: {stack[], features[], steps[{title, dept, days}], deploy, starter_html}; content: {pieces[{channel, title, text}]}"
+     },
+     "error": {
+      "type": "string",
+      "nullable": true
+     }
+    }
+   },
+   "Request": {
+    "type": "object",
+    "properties": {
+     "id": {
+      "type": "integer"
+     },
+     "brief": {
+      "type": "string"
+     },
+     "title": {
+      "type": "string"
+     },
+     "summary": {
+      "type": "string"
+     },
+     "questions": {
+      "type": "array",
+      "items": {
+       "type": "string"
+      }
+     },
+     "status": {
+      "type": "string",
+      "enum": [
+       "planning",
+       "working",
+       "done",
+       "failed"
+      ]
+     },
+     "tasks": {
+      "type": "array",
+      "items": {
+       "$ref": "#/components/schemas/Task"
+      }
+     }
+    }
+   }
+  }
+ },
+ "security": [
+  {
+   "bearer": []
+  }
+ ],
+ "paths": {
+  "/me": {
+   "get": {
+    "summary": "Who this key belongs to, and which AI, image and voice services are switched on",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/chat": {
+   "post": {
+    "summary": "Talk to Dia",
+    "responses": {
+     "200": {
+      "description": "{reply, actions[]}: each action is a button {label, method, path, body}. Send it to the same server (paths starting /api/v1 work with an app key) only when the person presses it."
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "message"
+        ],
+        "properties": {
+         "message": {
+          "type": "string"
+         },
+         "lang": {
+          "type": "string",
+          "enum": [
+           "en",
+           "hi",
+           "mr"
+          ]
+         },
+         "history": {
+          "type": "array",
+          "items": {
+           "type": "object",
+           "properties": {
+            "role": {
+             "type": "string",
+             "enum": [
+              "me",
+              "dia"
+             ]
+            },
+            "text": {
+             "type": "string"
+            }
+           }
+          }
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/tts": {
+   "post": {
+    "summary": "Dia's voice as MP3 (needs AZURE_SPEECH_KEY on the server)",
+    "responses": {
+     "200": {
+      "description": "audio/mpeg"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "text"
+        ],
+        "properties": {
+         "text": {
+          "type": "string"
+         },
+         "lang": {
+          "type": "string",
+          "enum": [
+           "en",
+           "hi",
+           "mr"
+          ]
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/requests": {
+   "post": {
+    "summary": "Give Dia a job. She splits it into department tasks and the teams deliver.",
+    "responses": {
+     "200": {
+      "description": "202 {id, status}"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "brief"
+        ],
+        "properties": {
+         "brief": {
+          "type": "string",
+          "example": "Research the EV charging market in Pune, make a poster and a 30-second reel"
+         }
+        }
+       }
+      }
+     }
+    }
+   },
+   "get": {
+    "summary": "Recent requests with progress counts",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/requests/{id}": {
+   "get": {
+    "summary": "One request with every task and its output",
+    "responses": {
+     "200": {
+      "description": "Request"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   }
+  },
+  "/requests/{id}/retry": {
+   "post": {
+    "summary": "Run the unfinished tasks of a failed request again",
+    "responses": {
+     "200": {
+      "description": "202"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   }
+  },
+  "/media/{id}": {
+   "get": {
+    "summary": "A picture the teams made. Links in task outputs carry ?sig= and need no key.",
+    "responses": {
+     "200": {
+      "description": "image"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     },
+     {
+      "name": "sig",
+      "in": "query",
+      "schema": {
+       "type": "string"
+      }
+     }
+    ]
+   }
+  },
+  "/approvals": {
+   "get": {
+    "summary": "Decisions waiting for the director",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   }
+  },
+  "/approvals/{id}": {
+   "post": {
+    "summary": "Approve or decline a decision",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "required": [
+         "decision"
+        ],
+        "properties": {
+         "decision": {
+          "type": "string",
+          "enum": [
+           "approve",
+           "reject"
+          ]
+         }
+        }
+       }
+      }
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   }
+  },
+  "/keys": {
+   "get": {
+    "summary": "App keys (director key only)",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    }
+   },
+   "post": {
+    "summary": "Make an app key; the key is shown once (director key only)",
+    "responses": {
+     "200": {
+      "description": "201 {id, name, key}"
+     }
+    },
+    "requestBody": {
+     "required": true,
+     "content": {
+      "application/json": {
+       "schema": {
+        "type": "object",
+        "properties": {
+         "name": {
+          "type": "string",
+          "example": "Vaibhav's phone"
+         }
+        }
+       }
+      }
+     }
+    }
+   }
+  },
+  "/keys/{id}": {
+   "delete": {
+    "summary": "Switch an app key off (director key only)",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    },
+    "parameters": [
+     {
+      "name": "id",
+      "in": "path",
+      "required": true,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ]
+   }
+  },
+  "/openapi.json": {
+   "get": {
+    "summary": "This description",
+    "responses": {
+     "200": {
+      "description": "OK"
+     }
+    },
+    "security": []
+   }
+  }
+ }
+}
