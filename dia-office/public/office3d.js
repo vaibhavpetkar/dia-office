@@ -839,7 +839,7 @@ const api = {
   floorOf(id) { const p = people.get(id); return p ? ["ground", "f1", "f2"][levels.indexOf(p.level)] : null; },
   focusDia() {
     if (view !== "f1") showFloor("f1"); closeUp = true;
-    if (people.get("dia")?.person.real) { controls.target.set(-0.6, 1.72, -5.9); camera.position.set(-0.5, 1.9, -4.3); }
+    if (people.get("dia")?.person.real) { controls.target.set(-0.6, 1.9, -5.9); camera.position.set(-0.55, 1.93, -5.0); }
     else { controls.target.set(-0.6, 2.35, -5.9); camera.position.set(-0.1, 3.1, -1.6); }
   },
   resetView() { showFloor(view); },

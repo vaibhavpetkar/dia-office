@@ -81,10 +81,8 @@ export async function loadRealDia() {
   const manager = new THREE.LoadingManager();
   // The model points at its original .tga files; we use our own textures, so ignore those.
   manager.addHandler(/\.tga$/i, { load: () => new THREE.Texture(), setPath() { return this; }, path: "" });
-  const [model, anims] = await Promise.all([
-    new FBXLoader(manager).loadAsync(DIR + "dia.fbx"),
-    fetch(DIR + "animations.json").then(r => { if (!r.ok) throw new Error("animations " + r.status); return r.json(); })
-  ]);
+  const json = name => fetch(DIR + name).then(r => { if (!r.ok) throw new Error(name + " " + r.status); return r.json(); });
+  const [model, anims, shape] = await Promise.all([new FBXLoader(manager).loadAsync(DIR + "dia.fbx"), json("animations.json"), json("face_shape.json").catch(() => null)]);
 
   const skin = new THREE.MeshStandardMaterial({ map: tex("head.webp"), normalMap: tex("head_n.webp", false), roughness: 0.55, metalness: 0 });
   const cloth = new THREE.MeshStandardMaterial({ map: tex("body.webp"), normalMap: tex("body_n.webp", false), roughness: 0.78, metalness: 0 });
@@ -96,6 +94,16 @@ export async function loadRealDia() {
     o.material = Array.isArray(o.material) ? o.material.map(pick) : pick(o.material);
   });
 
+  // Her face shape: vertex offsets fitted from 468 matching points on her photo and on this head
+  // (jaw, cheeks, nose and mouth move to her proportions; the eyes stay where the eyeballs are).
+  if (shape) model.traverse(o => {
+    if (!o.isMesh || !o.morphTargetDictionary) return;
+    const p = o.geometry.attributes.position;
+    shape.i.forEach((v, k) => p.setXYZ(v, p.getX(v) + shape.d[k * 3], p.getY(v) + shape.d[k * 3 + 1], p.getZ(v) + shape.d[k * 3 + 2]));
+    // The stock model's fringe falls across her forehead; Dia wears a centre parting, so those hair cards go.
+    for (const t of shape.hide || []) for (const v of [3 * t + 1, 3 * t + 2]) p.setXYZ(v, p.getX(3 * t), p.getY(3 * t), p.getZ(3 * t));
+    p.needsUpdate = true; o.geometry.computeBoundingSphere();
+  });
   const box = new THREE.Box3().setFromObject(model);
   model.scale.setScalar(HEIGHT / (box.max.y - box.min.y));
   model.userData.agentId = "dia";
