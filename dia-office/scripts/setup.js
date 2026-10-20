@@ -9,8 +9,11 @@ const envPath = root + ".env";
 const dbUrl = process.argv[2];
 
 if (existsSync(envPath) && !dbUrl) {
-  console.log(".env already exists, so nothing was changed.\nTo set the database, run: npm run setup -- \"postgres://user:pass@host/db?sslmode=require\"");
-  process.exit(0);
+  const key = readFileSync(envPath, "utf8").match(/^ADMIN_TOKEN=(.*)$/m)?.[1]?.trim();
+  if (key && key !== "change-me-to-a-long-random-string") {
+    console.log(`.env already exists, so nothing was changed.\n  Director key: ${key}\nTo set the database, run: npm run setup -- "postgres://user:pass@host/db?sslmode=require"`);
+    process.exit(0);
+  }
 }
 
 let env = readFileSync(existsSync(envPath) ? envPath : root + ".env.example", "utf8");

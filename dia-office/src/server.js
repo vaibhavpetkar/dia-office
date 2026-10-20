@@ -56,9 +56,12 @@ function admin(req, res, next) {
   if (tokenState() !== "ok")
     return res.status(401).json({ error: "ADMIN_TOKEN is not set in .env yet. Run npm run setup, then restart the office." });
   const want = Buffer.from(process.env.ADMIN_TOKEN || "");
-  const got = Buffer.from((req.get("authorization") || "").replace(/^Bearer /, ""));
-  if (!want.length || want.length !== got.length || !timingSafeEqual(want, got))
-    return res.status(401).json({ error: "Admin token missing or wrong. Enter it in the office page." });
+  const sent = (req.get("authorization") || "").replace(/^Bearer\s*/, "").trim();
+  if (!sent)
+    return res.status(401).json({ error: "Enter your director key first: paste ADMIN_TOKEN from .env into the Director key box at the top of the page and press Unlock.", key: "missing" });
+  const got = Buffer.from(sent);
+  if (want.length !== got.length || !timingSafeEqual(want, got))
+    return res.status(401).json({ error: "That director key doesn't match ADMIN_TOKEN in .env. Copy it again from .env. If you changed .env after starting the office, restart npm start.", key: "wrong" });
   next();
 }
 const need = (body, fields) => {
@@ -134,4 +137,6 @@ const server = createServer(app);
 attach(new WebSocketServer({ server, path: "/ws" }));
 const port = parseInt(process.env.PORT || "8080", 10);
 server.listen(port, () => console.log(`Dia's office is open on http://localhost:${port} (AI: ${process.env.LLM_PROVIDER || "mock"})` +
-  (db.ok ? "" : " - database not ready, the page will show setup steps")));
+  (db.ok ? "" : " - database not ready, the page will show setup steps") +
+  (tokenState() === "ok" ? `\nDirector key: ADMIN_TOKEN in .env (starts with ${process.env.ADMIN_TOKEN.slice(0, 4)}…). Paste it into the Director key box and press Unlock.`
+    : "\nADMIN_TOKEN is not set yet: run npm run setup, then restart.")));

@@ -178,3 +178,4 @@ pre.rep{white-space:pre-wrap;font-size:.74rem;background:var(--bg);border-radius
 .docs li:first-child{border-top:0;padding-top:0}
 .docs small{font-family:var(--f-mono);font-size:.66rem;color:var(--muted);white-space:nowrap}
 .form textarea.tall{min-height:120px}
+.key input.need{border-color:var(--kumkum);box-shadow:0 0 0 3px color-mix(in srgb,var(--kumkum) 25%,transparent)}

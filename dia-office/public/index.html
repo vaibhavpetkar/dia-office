@@ -15,7 +15,7 @@
     </div>
     <div class="kpis" id="kpis"></div>
     <div class="ctrls">
-      <span class="key"><input id="key" type="password" placeholder="Director key" autocomplete="off"><button class="btn" id="bKey">Unlock</button></span>
+      <span class="key"><input id="key" type="password" placeholder="Director key" autocomplete="off" aria-label="Director key (ADMIN_TOKEN from .env)" title="Paste ADMIN_TOKEN from your .env file, then press Unlock"><button class="btn" id="bKey">Unlock</button></span>
       <button class="btn primary" id="bLead">+ New lead</button>
       <button class="btn primary" id="bCand">+ New candidate</button>
     </div>
@@ -85,8 +85,15 @@ let KEY="";try{KEY=localStorage.getItem("diaKey")||""}catch{}
 async function api(path,opts={}){
   const r=await fetch(path,{...opts,headers:{"content-type":"application/json",authorization:"Bearer "+KEY,...(opts.headers||{})}});
   const j=await r.json().catch(()=>({}));
+  if(r.status===401)askForKey(j.key);
   if(!r.ok)throw new Error(j.error||("Request failed ("+r.status+")"));
   return j;
+}
+// Point at the key box when an action needs the director key.
+function askForKey(state){
+  unlocked=false;const k=document.getElementById("key"),b=document.getElementById("bKey");
+  k.classList.add("need");b.textContent=state==="wrong"?"Wrong key":"Unlock";
+  window.scrollTo({top:0,behavior:"smooth"});k.focus();
 }
 const look=a=>({...a.look,skin:SK[a.look?.skin??0]||SK[0],ai:a.kind!=="human"});
 
@@ -260,7 +267,7 @@ document.getElementById("kbForm").onsubmit=async e=>{
 };
 async function checkKey(){
   if(!KEY){unlocked=false;return}
-  try{await api("/api/auth/check");unlocked=true}catch{unlocked=false}
+  try{await api("/api/auth/check");unlocked=true;document.getElementById("key").classList.remove("need")}catch{unlocked=false}
   document.getElementById("bKey").textContent=unlocked?"Unlocked":"Unlock";
 }
 
@@ -293,7 +300,7 @@ function connect(){
 const keyIn=document.getElementById("key");keyIn.value=KEY;
 document.getElementById("bKey").onclick=async()=>{
   KEY=keyIn.value.trim();try{localStorage.setItem("diaKey",KEY)}catch{}
-  try{await api("/api/auth/check");unlocked=true;document.getElementById("bKey").textContent="Unlocked"}
+  try{await api("/api/auth/check");unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked"}
   catch(e){unlocked=false;document.getElementById("bKey").textContent=/ADMIN_TOKEN is not set/.test(e.message)?"Key not set":"Wrong key"}
   loadKb();
 };
