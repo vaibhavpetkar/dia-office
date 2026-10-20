@@ -213,10 +213,11 @@ test("Dia splits a goal into jobs for different teams", async () => {
   assert.match(money.reply, /profit|loss/i);
 });
 
-test("Support and Finance have desks, and new hires can join them", async () => {
+test("Support, Finance and the floor 2 departments take new hires", async () => {
   const st = (await call("/api/state")).body;
   assert.ok(st.agents.some(a => a.id === "kavya" && a.dept === "support"));
   assert.ok(st.agents.some(a => a.id === "arjun" && a.dept === "fin"));
   assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Riya", role: "Accountant", dept: "fin" } })).status, 202);
+  assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Kiran", role: "Designer", dept: "design" } })).status, 202, "floor 2 departments take hires");
   assert.equal((await call("/api/candidates", { method: "POST", body: { name: "Riya", role: "Accountant", dept: "space" } })).status, 400);
 });

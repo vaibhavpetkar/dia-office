@@ -16,7 +16,9 @@ export const AGENTS = [
   { id: "arjun", name: "Arjun", role: "Accounts & Billing", dept: "fin", cost: 22000, look: { skin: 4, style: "short", shirt: "#3f5f3a", glasses: 1 } }
 ];
 
-export const DEPTS = ["hr", "sales", "eng", "mkt", "support", "fin"];
+// Floor 1 holds the core teams; floor 2 has sixteen more departments, empty until you hire into them.
+export const DEPTS = ["hr", "sales", "eng", "mkt", "support", "fin",
+  "product", "design", "qa", "data", "cloud", "security", "mobile", "rnd", "success", "content", "events", "partners", "legal", "ops", "admin", "training"];
 
 export const COMPANY = () =>
   `You work at ${process.env.COMPANY_NAME || "Inveon Technologies"}, a software company in Pune, India that builds web apps, ` +

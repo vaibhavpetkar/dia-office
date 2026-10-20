@@ -289,3 +289,10 @@ table.inv td:last-child{text-align:right;font-variant-numeric:tabular-nums;white
 table.inv tr.tot td{font-weight:700;border-bottom:0;border-top:2px solid var(--line)}
 .pnl{max-width:520px}
 .m .btn.act + .btn.act{margin-top:4px}
+
+/* Floor picker on the 3D stage */
+.viewbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:flex-start}
+.floors{display:flex;flex-direction:column;gap:4px}
+.floors .btn{padding:4px 10px;font-size:.78rem}
+.floors .btn[aria-pressed="true"]{background:var(--peacock);color:#fff;border-color:var(--peacock)}
+@media (max-width:640px){.floors{flex-direction:row;flex-wrap:wrap}}

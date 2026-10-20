@@ -29,7 +29,14 @@
     <div class="stagecol">
     <section class="stage" id="stage" hidden aria-label="3D office floor">
       <div class="floor3d" id="floor3d"></div>
-      <div class="viewbtns"><button class="btn" id="bView" type="button">Close-up of Dia</button></div>
+      <div class="viewbtns">
+        <div class="floors" role="group" aria-label="Choose a floor">
+          <button class="btn" type="button" data-fl="all">Whole building</button>
+          <button class="btn" type="button" data-fl="f2">Floor 2</button>
+          <button class="btn" type="button" data-fl="f1" aria-pressed="true">Floor 1</button>
+          <button class="btn" type="button" data-fl="ground">Ground</button>
+        </div>
+        <button class="btn" id="bView" type="button">Close-up of Dia</button></div>
       <p class="hint">Drag to turn · scroll to zoom · click someone to see their work</p>
     </section>
     <section class="floor" id="floor" aria-label="Office floor"></section>
@@ -87,7 +94,7 @@
         <form class="form" id="candForm">
           <div class="two"><div><label for="cName">Name</label><input id="cName" required></div><div><label for="cEmail">Email</label><input id="cEmail" type="email"></div></div>
           <div class="two"><div><label for="cRole">Role</label><input id="cRole" required placeholder="Frontend Developer"></div>
-            <div><label for="cDept">Department</label><select id="cDept"><option value="eng">Engineering</option><option value="sales">Sales</option><option value="mkt">Marketing</option><option value="hr">HR</option><option value="support">Support</option><option value="fin">Finance</option></select></div></div>
+            <div><label for="cDept">Department</label><select id="cDept"></select></div></div>
           <div class="two"><div><label for="cKind">Type</label><select id="cKind"><option value="human">Human</option><option value="ai">AI agent</option></select></div>
             <div><label for="cCost">Monthly cost (₹)</label><input id="cCost" type="number" min="0" value="20000"></div></div>
           <label for="cResume">Resume or notes</label><textarea id="cResume"></textarea>
@@ -133,6 +140,11 @@
 const DEPTS={dia:{name:"Dia's Cabin",sub:"Owner · final decisions"},hr:{name:"HR",sub:"Hiring · policies · reporting manager"},
   sales:{name:"Sales",sub:"Cold calls · CRM · lead analysis"},eng:{name:"Engineering",sub:"Plan · build · deploy · go live"},mkt:{name:"Marketing",sub:"Campaigns · case studies"},
   support:{name:"Support",sub:"Client tickets · replies you approve"},fin:{name:"Finance",sub:"GST invoices · payments · profit"}};
+const CORE=Object.keys(DEPTS);
+// Floor 2 departments: open desks until someone is hired into them.
+[["product","Product"],["design","UI/UX Design"],["qa","QA & Testing"],["data","Data & AI"],["cloud","Cloud & DevOps"],["security","Security"],["mobile","Mobile Apps"],["rnd","R&D Lab"],
+ ["success","Customer Success"],["content","Content Studio"],["events","Events"],["partners","Partnerships"],["legal","Legal"],["ops","Operations"],["admin","Admin & Facilities"],["training","Training"]]
+  .forEach(([k,name])=>DEPTS[k]={name,sub:"Floor 2 · open desks",floor2:true});
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const inr=n=>n?"₹"+Number(n).toLocaleString("en-IN"):"—";
 let S={agents:[],approvals:[],projects:[],activity:[],stats:{},stages:[]},selected="dia";
@@ -157,7 +169,7 @@ const look=a=>({...a.look,skin:SK[a.look?.skin??0]||SK[0],ai:a.kind!=="human"});
 const floor=document.getElementById("floor");
 function renderFloor(){
   const keep={};document.querySelectorAll(".agent .bub").forEach(b=>keep[b.parentElement.dataset.id]=b.textContent);
-  floor.innerHTML=Object.entries(DEPTS).map(([k,d])=>k==="dia"?`
+  floor.innerHTML=Object.entries(DEPTS).filter(([k])=>CORE.includes(k)||S.agents.some(a=>a.dept===k)).map(([k,d])=>k==="dia"?`
     <div class="room cabin" data-d="dia"><header><h2>${d.name}</h2><span>${d.sub}</span></header>
       <div class="cabinRow"><button class="diaBig agent" id="ag-dia" data-id="dia" aria-label="Dia, virtual owner">${diaSVG()}<span class="bub"></span></button>
       <div class="diaSay"><div class="mr">नमस्कार! मी दिया.</div>
@@ -383,6 +395,9 @@ document.getElementById("ticketForm").onsubmit=async e=>{
   try{await api("/api/tickets",{method:"POST",body:JSON.stringify({customer:v("tCustomer"),email:v("tEmail"),subject:v("tSubject"),message:v("tMessage")})});
     e.target.reset();m.textContent="Kavya is drafting a reply. It will wait for your approval.";}catch(err){m.textContent=err.message;m.classList.add("err")}
 };
+document.getElementById("cDept").innerHTML=`<optgroup label="Floor 1">${CORE.filter(k=>k!=="dia").map(k=>`<option value="${k}">${DEPTS[k].name}</option>`).join("")}</optgroup>
+  <optgroup label="Floor 2 (new departments)">${Object.keys(DEPTS).filter(k=>DEPTS[k].floor2).map(k=>`<option value="${k}">${DEPTS[k].name}</option>`).join("")}</optgroup>`;
+document.getElementById("cDept").value="eng";
 document.getElementById("bCand").onclick=()=>{const c=document.getElementById("candCard");c.hidden=!c.hidden;if(!c.hidden)document.getElementById("cName").focus()};
 const v=id=>document.getElementById(id).value.trim();
 document.getElementById("leadForm").onsubmit=async e=>{
@@ -467,7 +482,9 @@ function init3d(){
 }
 window.addEventListener("office3d-ready",init3d);
 let closeUp=false;
-document.getElementById("bView").onclick=e=>{closeUp=!closeUp;closeUp?window.Office3D?.focusDia():window.Office3D?.resetView();e.target.textContent=closeUp?"Whole office":"Close-up of Dia"};
+const markFloor=f=>document.querySelectorAll("[data-fl]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.fl===f));
+document.getElementById("bView").onclick=e=>{closeUp=!closeUp;closeUp?(window.Office3D?.focusDia(),markFloor("f1")):window.Office3D?.resetView();e.target.textContent=closeUp?"Back to the floor":"Close-up of Dia"};
+document.querySelector(".floors").onclick=e=>{const b=e.target.closest("[data-fl]");if(!b)return;closeUp=false;document.getElementById("bView").textContent="Close-up of Dia";window.Office3D?.showFloor(b.dataset.fl);markFloor(b.dataset.fl)};
 
 /* ---------- Talk to Dia ---------- */
 const msgs=document.getElementById("msgs"),askIn=document.getElementById("askIn"),history=[];
