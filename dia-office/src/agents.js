@@ -13,10 +13,13 @@ export const AGENTS = [
   { id: "pooja", name: "Pooja", role: "Digital Marketing", dept: "mkt", cost: 17000, look: { skin: 5, style: "bun", shirt: "#7b4bb7", bindi: 1 } },
   { id: "isha", name: "Isha", role: "Content & Social", dept: "mkt", cost: 15000, look: { skin: 1, style: "long", shirt: "#b0478a" } },
   { id: "kavya", name: "Kavya", role: "Client Support", dept: "support", cost: 16000, look: { skin: 2, style: "long", shirt: "#0f8a84", headset: 1, bindi: 1 } },
-  { id: "arjun", name: "Arjun", role: "Accounts & Billing", dept: "fin", cost: 22000, look: { skin: 4, style: "short", shirt: "#3f5f3a", glasses: 1 } }
+  { id: "arjun", name: "Arjun", role: "Accounts & Billing", dept: "fin", cost: 22000, look: { skin: 4, style: "short", shirt: "#3f5f3a", glasses: 1 } },
+  { id: "sneha", name: "Sneha", role: "QA Automation", dept: "qa", cost: 24000, look: { skin: 1, style: "bun", shirt: "#2a9d8f", glasses: 1 } },
+  { id: "aditya", name: "Aditya", role: "Manual & UI Tester", dept: "qa", cost: 18000, look: { skin: 3, style: "short", shirt: "#e76f51", headset: 1 } }
 ];
 
-// Floor 1 holds the core teams; floor 2 has sixteen more departments, empty until you hire into them.
+// Floor 1 holds the core teams; floor 2 has sixteen more departments, empty until you hire into them
+// (QA & Testing starts with Sneha and Aditya).
 export const DEPTS = ["hr", "sales", "eng", "mkt", "support", "fin",
   "product", "design", "qa", "data", "cloud", "security", "mobile", "rnd", "success", "content", "events", "partners", "legal", "ops", "admin", "training"];
 

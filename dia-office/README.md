@@ -7,7 +7,8 @@ Inveon Technologies' virtual office, run by **Dia**. AI agents work in HR, Sales
 | Flow | Steps |
 |---|---|
 | **Sales** | Lead (form, cold-call log or CRM webhook) → Kabir captures it → Meera writes the requirement report → Sameer, the sales manager, reviews it → Dia prepares a recommendation and the client message → **you approve** → the client is emailed, a sale order and work order are created |
-| **Engineering** | Neel writes a real build plan (stack, tasks, deploy) → Tara builds → you click *Testing → Deploying → Live* as the real work finishes |
+| **Engineering** | Neel writes a real build plan (stack, tasks, deploy) → Tara builds → you click *Testing* when the build is done → QA tests it → *Deploying → Live* as the real work finishes |
+| **Testing (QA)** | When a project reaches Testing, Sneha (QA automation) writes test cases and a Playwright script and runs real checks against the preview/sandbox URL (page opens, speed, HTTPS, title, phone viewport, alt text, broken links). Aditya (manual & UI tester) prepares a hands-on checklist for real phones and browsers: sliders and carousels, forms, menus, layouts, payments, keyboard use. A person ticks each check Pass/Fail in *Records → Tests*; a failed check or failed automated check becomes a bug for Tara → **you sign off**: *Release to deploy* hands it to Om, *Send back to build* gives Tara the bug list, and marking Testing again re-tests it |
 | **Marketing** | When a project goes Live, Pooja plans a campaign and Isha drafts a case study and LinkedIn post (drafts for you to review) |
 | **Support** | A ticket (form, help-desk webhook or "ticket from Acme: …" in chat) → Kavya reads company knowledge and drafts a reply → **you approve** → the client is emailed. Bugs are flagged to Tara |
 | **Finance** | When you approve a project, Arjun drafts a 50% advance invoice with 18% GST; at go-live he drafts the balance → **you approve** each before it is emailed → mark it paid when money arrives. The *Profit* tab shows this month's cash in, team billing and AI spend |
@@ -95,7 +96,8 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | GET/POST | `/api/interview/:token` | the candidate (secret link) |
 | POST | `/api/tickets`, `/api/webhooks/ticket` `{customer, email, subject, message}`, `/api/tickets/:id/close` | director key |
 | POST | `/api/invoices/:id/paid` | director key |
-| GET | `/api/records/{leads,candidates,projects,decisions,spend,tickets,invoices,finance}` | director key |
+| POST | `/api/projects/:id/qa` `{url?}` (re-run tests, optionally at a new preview URL), `/api/test-runs/:id/manual` `{index, result:"pass"\|"fail", note?}` | director key |
+| GET | `/api/records/{leads,candidates,projects,decisions,spend,tests,tickets,invoices,finance}` | director key |
 | POST | `/api/dia/chat`, `/api/dia/selfcheck`, `/api/dia/repair` | director key |
 | POST | `/api/approvals/:id` `{decision:"approve"\|"reject"}` | director key |
 | POST | `/api/projects/:id/stage` `{stage}` | director key |
@@ -122,8 +124,9 @@ For AWS (EC2 + RDS or Neon + Bedrock + SES, HTTPS with Caddy), follow **[docs/DE
 
 ## Honest limits
 - The AI plans, analyses, scores and writes drafts. Building and deploying real client software is still done by your developers (or Claude Code). The office tracks it when you move the stage.
+- QA's automated checks look at the page over HTTP; they don't click through it in a browser. The Playwright script Sneha writes is for your developers to commit and run in CI, and Aditya's checklist is done by a person with real devices.
 - AI interview scores support a person's decision; they don't replace it. Keep a human approving every hire.
 - There is one director key. Separate logins and roles for several people are not built yet.
 - Dia's 3D face is her photo painted onto a stock scanned head, so the shape of her face is the model's, not hers, and the top of her hair is the model's own. A 3D scan of her real face (or a paid avatar service) would be needed for a true likeness. The other staff are still simple figures.
-- Floor 2 departments start empty: their desks fill as you hire into them. The diners in the canteen are decoration.
+- Floor 2 departments start empty (except QA & Testing, where Sneha and Aditya sit): their desks fill as you hire into them. The diners in the canteen are decoration.
 - The Python agents in `dia-ai/` are a separate prototype; the office does not call them.
