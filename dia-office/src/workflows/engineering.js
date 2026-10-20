@@ -1,11 +1,12 @@
 // Engineering plans the build; a person moves it through Building -> Testing -> Deploying -> Live.
-// Going Live hands the project to Marketing.
+// Going Live hands the project to Marketing. Tara's website runs live in the sandbox from the start of Building.
 import { q, one } from "../db.js";
 import { ask } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
 import { status, idle, log, handoff, refresh, problem } from "../events.js";
 import { draftInvoice } from "./finance.js";
+import { buildSite } from "./sandbox.js";
 
 export const STAGES = ["Won", "Work order", "Planning", "Building", "Testing", "Deploying", "Live", "Promoted"];
 
@@ -34,6 +35,8 @@ export async function startEngineering(projectId) {
   await status("tara", `Building ${p.wo} (${days} days planned)`);
   await log("tara", `picked up ${p.wo}. Mark the project as Testing in the office when the build is done.`, null, false);
   refresh("projects");
+  // First version goes straight into the sandbox so people can click through it while the real build goes on.
+  await buildSite(p.id);
 }
 
 export async function setStage(projectId, stage) {

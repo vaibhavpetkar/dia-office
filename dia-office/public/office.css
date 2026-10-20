@@ -145,6 +145,8 @@ button:focus-visible,.agent:focus-visible,summary:focus-visible{outline:2px soli
 .msg.err{color:var(--kumkum)}
 .prov{font-family:var(--f-mono);font-size:.7rem;padding:1px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
 .proj .btn{justify-self:start;padding:2px 10px;font-size:.75rem}
+.proj .btn.sbx{color:var(--eng);border-color:color-mix(in srgb,var(--eng) 45%,var(--line));text-decoration:none}
+.sbnote{font-size:.75rem;color:var(--muted)}
 pre.rep{white-space:pre-wrap;font-size:.74rem;background:var(--bg);border-radius:8px;padding:6px 8px;margin:4px 0 0;max-height:220px;overflow:auto}
 
 /* Setup screen (shown until the database is reachable) */

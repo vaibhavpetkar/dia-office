@@ -19,6 +19,7 @@ import { proposeFix } from "./repair.js";
 import { DEPTS } from "./agents.js";
 import { newTicket, closeTicket } from "./workflows/support.js";
 import { markPaid, profitAndLoss } from "./workflows/finance.js";
+import { buildSite, sitesFor, siteByToken, siteFile, withHelper, contentType, SANDBOX_CSP } from "./workflows/sandbox.js";
 
 const app = express();
 app.use(express.json({ limit: "1mb" }));
@@ -54,6 +55,21 @@ const health = () => ({
 });
 app.get("/api/health", (_req, res) => res.json(health()));
 let retrying;
+// ---- Sandbox: websites Engineering built, running live. The token in the link is the only key, so it can go to the client. ----
+const TOKEN = /^[A-Za-z0-9_-]{20,40}$/;
+app.get("/sandbox/:token/:file?", wrap(async (req, res) => {
+  // Pages link to each other relatively, so the home page has to live at /sandbox/<token>/ with the slash.
+  if (!req.params.file && !req.path.endsWith("/")) return res.redirect(301, `/sandbox/${encodeURIComponent(req.params.token)}/`);
+  if (!db.ok) return res.status(503).type("text").send("The office database is not ready yet.");
+  if (limited("sandbox", req.ip, 600, 60 * 1000)) return res.status(429).type("text").send("Too many requests. Wait a minute.");
+  const file = req.params.file || "index.html";
+  const body = TOKEN.test(req.params.token) ? await siteFile(req.params.token, file) : null;
+  res.set({ "content-security-policy": SANDBOX_CSP, "x-content-type-options": "nosniff", "referrer-policy": "no-referrer",
+    "x-robots-tag": "noindex", "cache-control": "no-store" });
+  if (body === null) return res.status(404).type("text").send("This page isn't part of the website.");
+  res.type(contentType(file)).send(file.endsWith(".html") ? withHelper(body) : body);
+}));
+
 app.post("/api/health/retry", async (_req, res) => {
   if (!db.ok) await (retrying ??= connectDb({ reload: true }).finally(() => (retrying = null)));
   res.status(db.ok ? 200 : 503).json({ db });
@@ -100,7 +116,11 @@ app.get("/api/state", wrap(async (req, res) => {
   const [agents, approvals, projects, activity, stats] = await Promise.all([
     q("SELECT id,name,role,dept,kind,monthly_cost,look,status,tasks_done FROM agents ORDER BY created_at"),
     director ? q("SELECT * FROM approvals WHERE status='pending' ORDER BY created_at") : none,
-    director ? q("SELECT id,company,need,value,so,wo,stage,plan,marketing,created_at FROM projects ORDER BY created_at DESC LIMIT 20") : none,
+    director ? q(`SELECT id,company,need,value,so,wo,stage,plan,marketing,created_at,
+      (SELECT json_build_object('version',s.version,'token',s.token,'status',s.status,'ready',
+         (SELECT token FROM sites r WHERE r.project_id=projects.id AND r.status='ready' ORDER BY version DESC LIMIT 1))
+       FROM sites s WHERE s.project_id=projects.id ORDER BY version DESC LIMIT 1) AS site
+    FROM projects ORDER BY created_at DESC LIMIT 20`) : none,
     director ? q("SELECT * FROM activity ORDER BY created_at DESC LIMIT 60") : none,
     one(`SELECT
       (SELECT count(*) FROM leads)::int AS leads,
@@ -173,6 +193,17 @@ app.post("/api/approvals/:id", admin, wrap(async (req, res) => {
 }));
 app.post("/api/projects/:id/stage", admin, wrap(async (req, res) => {
   res.json(await setStage(parseInt(req.params.id, 10), req.body.stage));
+}));
+
+app.get("/api/projects/:id/sites", admin, wrap(async (req, res) => res.json(await sitesFor(parseInt(req.params.id, 10)))));
+// Ask Tara for changes: she builds a new version and the old one stays in the sandbox.
+app.post("/api/projects/:id/sites", admin, wrap(async (req, res) => {
+  res.status(202).json(await buildSite(parseInt(req.params.id, 10), String(req.body?.feedback || "").trim().slice(0, 2000) || null));
+}));
+app.get("/api/sandbox/:token", wrap(async (req, res) => {
+  if (limited("sandbox-meta", req.ip, 120, 60 * 1000)) return res.status(429).json({ error: "Too many requests. Wait a minute." });
+  if (!TOKEN.test(req.params.token)) return res.status(404).json({ error: "This sandbox link doesn't exist." });
+  res.json(await siteByToken(req.params.token));
 }));
 
 // ---- Records (the lists behind the office) ----

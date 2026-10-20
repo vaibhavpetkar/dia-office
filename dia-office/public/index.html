@@ -251,8 +251,12 @@ function renderProjects(){
       <div class="bar"><i style="width:${pct}%;background:var(--${stageCol[p.stage]||"eng"})"></i></div>
       ${p.plan?`<details><summary style="font-size:.76rem;color:var(--peacock);cursor:pointer">Build plan</summary><pre class="rep">${esc(planText(p.plan))}</pre></details>`:""}
       ${p.marketing?`<details><summary style="font-size:.76rem;color:var(--peacock);cursor:pointer">Marketing drafts</summary><pre class="rep">${esc(JSON.stringify(p.marketing,null,2))}</pre></details>`:""}
+      ${sandboxLink(p.site)}
       ${next?`<button class="btn" data-pj="${p.id}" data-st="${next}">Mark as ${next}</button>`:""}</div>`}).join("");
 }
+// Tara's website for the project, running live in the sandbox.
+const sandboxLink=s=>!s?"":s.ready?`<a class="btn sbx" href="/sandbox.html?s=${encodeURIComponent(s.status==="building"?s.ready:s.token)}" target="_blank" rel="noopener">▶ Open live sandbox${s.status==="ready"?` · v${s.version}`:""}</a>${s.status==="building"?` <span class="sbnote">Tara is building v${s.version}…</span>`:""}`
+  :s.status==="building"?`<span class="sbnote">Tara is building the website for the sandbox…</span>`:`<span class="sbnote">The sandbox build failed. Ask Dia to check.</span>`;
 const planText=p=>`Stack: ${(p.stack||[]).join(", ")}\n${p.architecture||""}\n\nTasks:\n${(p.tasks||[]).map(t=>`- ${t.title} (${t.owner}, ${t.days}d)`).join("\n")}\n\nDeploy: ${p.deploy||""}\nRisks: ${(p.risks||[]).join("; ")}`;
 document.getElementById("projects").addEventListener("click",async e=>{
   const b=e.target.closest("[data-pj]");if(!b)return;b.disabled=true;
