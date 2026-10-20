@@ -58,8 +58,8 @@
     <aside class="rail">
       <section class="card chat" id="chat" aria-label="Talk to Dia">
         <header><button type="button" class="diaFace" id="diaFace" title="Dia" aria-label="Make Dia's picture bigger">
-            <img src="dia.jpg" alt=""><img class="jaw" src="dia.jpg" alt=""><i class="lid l"></i><i class="lid r"></i></button>
-          <div class="diaName"><b>Talk to Dia</b><small id="diaState">Your virtual owner · online</small><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
+            <canvas id="diaFaceCv" width="480" height="480" aria-hidden="true"></canvas></button>
+          <div class="diaName"><b>Talk to Dia</b><small id="diaState">Your virtual owner · online</small><span class="langs" id="langs" role="group" aria-label="Dia's language"></span><small id="voiceNote" class="vnote"></small><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span></div>
           <span class="row">
           <button class="btn icon" id="bVoice" type="button" aria-pressed="true" title="Dia speaks her answers">🔊</button>
           <button class="btn icon" id="bChatMin" type="button" aria-expanded="true" title="Hide chat">–</button></span></header>
@@ -135,6 +135,7 @@
 </div>
 
 <script src="faces.js"></script>
+<script src="talkingface.js"></script>
 <script type="module" src="office3d.js"></script>
 <script>
 const DEPTS={dia:{name:"Dia's Cabin",sub:"Owner · final decisions"},hr:{name:"HR",sub:"Hiring · policies · reporting manager"},
@@ -491,29 +492,70 @@ const msgs=document.getElementById("msgs"),askIn=document.getElementById("askIn"
 let voiceOn=true;try{voiceOn=localStorage.getItem("diaVoice")!=="0"}catch{}
 const bVoice=document.getElementById("bVoice");
 const syncVoice=()=>{bVoice.setAttribute("aria-pressed",voiceOn);bVoice.textContent=voiceOn?"🔊":"🔇";bVoice.title=voiceOn?"Dia speaks her answers (click to mute)":"Dia is muted (click to unmute)"};syncVoice();
-bVoice.onclick=()=>{voiceOn=!voiceOn;try{localStorage.setItem("diaVoice",voiceOn?"1":"0")}catch{};if(!voiceOn)speechSynthesis?.cancel();syncVoice()};
+bVoice.onclick=()=>{voiceOn=!voiceOn;try{localStorage.setItem("diaVoice",voiceOn?"1":"0")}catch{};if(!voiceOn)stopVoice();syncVoice()};
 document.getElementById("bChatMin").onclick=e=>{const b=document.getElementById("chatBody"),open=b.hidden;b.hidden=!open;e.target.textContent=open?"–":"+";e.target.setAttribute("aria-expanded",open)};
+/* Voice: English, Hindi or Marathi. Free natural voices come from the browser (Microsoft Edge has Neerja, Swara and
+   Aarohi built in); with AZURE_SPEECH_KEY on the server Dia uses the same neural voices from the cloud on any browser,
+   and her lips follow the real audio. */
+const LANGS={en:{code:"en-IN",label:"EN",want:/neerja|heera|veena|kajal|female/i,hello:"Namaskar! I'm Dia, and the office is ready. Ask me anything."},
+  hi:{code:"hi-IN",label:"हिं",want:/swara|kalpana|kajal|female/i,hello:"नमस्ते! मैं दिया हूँ। ऑफिस तैयार है, आप मुझसे कुछ भी पूछिए।"},
+  mr:{code:"mr-IN",label:"मरा",want:/aarohi|female/i,hello:"नमस्कार! मी दिया. ऑफिस तयार आहे, मला काहीही विचारा."}};
+let lang="en";try{lang=localStorage.getItem("diaLang")||"en"}catch{}
+if(!LANGS[lang])lang="en";
 function pickVoice(){
-  const vs=window.speechSynthesis?.getVoices()||[];
-  return vs.find(v=>/en-IN/i.test(v.lang)&&/female|heera|veena|neerja|swara|kajal/i.test(v.name))||vs.find(v=>/en-IN/i.test(v.lang))
-    ||vs.find(v=>/^en/i.test(v.lang)&&/female|samantha|zira|aria|jenny|google uk english female/i.test(v.name))||vs.find(v=>/^en/i.test(v.lang));
+  const vs=window.speechSynthesis?.getVoices()||[],L=LANGS[lang],base=L.code.slice(0,2);
+  const same=vs.filter(v=>v.lang.replace("_","-").toLowerCase().startsWith(base));
+  const natural=v=>/natural|online|neural/i.test(v.name);
+  return same.find(v=>natural(v)&&L.want.test(v.name))||same.find(v=>v.lang.toLowerCase()===L.code.toLowerCase()&&L.want.test(v.name))
+    ||same.find(natural)||same.find(v=>L.want.test(v.name))||same.find(v=>v.lang.toLowerCase()===L.code.toLowerCase())||same[0]||null;
 }
-let talkT;
+function voiceNote(){
+  const el=document.getElementById("voiceNote");if(!el)return;
+  if(H.tts==="azure"){el.textContent="Voice: neural (cloud)";el.className="vnote";return}
+  const v=pickVoice();
+  el.textContent=v?`Voice: ${v.name.replace(/Microsoft |Online |\(Natural\)| - .*$/g,"").trim()}`:`No ${({en:"English",hi:"Hindi",mr:"Marathi"})[lang]} voice in this browser. Open the office in Microsoft Edge for a natural one.`;
+  el.className=v?"vnote":"vnote warn";
+}
+window.speechSynthesis&&speechSynthesis.addEventListener?.("voiceschanged",voiceNote);
+let talkT,audioCtx,curAudio;
 const chatEl=document.getElementById("chat"),diaState=document.getElementById("diaState");
-function talking(on){chatEl.classList.toggle("speaking",on);diaState.textContent=on?"Speaking…":"Your virtual owner · online";window.Office3D?.talk(on)}
-document.getElementById("diaFace").onclick=()=>chatEl.classList.toggle("bigface");
-function speak(text){
-  const O={talk:talking};clearTimeout(talkT);
-  bubble("dia",text.length>90?text.slice(0,88)+"…":text,false);
-  const done=()=>{O?.talk(false);talkT=setTimeout(()=>bubble("dia","",false),4000)};
-  if(voiceOn&&window.speechSynthesis){
-    speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(text.replace(/₹/g,"rupees ").replace(/[*_#`]/g,""));
-    const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}else u.lang="en-IN";
-    u.rate=1.02;u.pitch=1.12;u.onstart=()=>O?.talk(true);u.onend=done;u.onerror=done;
-    speechSynthesis.speak(u);
-  }else{O?.talk(true);talkT=setTimeout(done,Math.min(9000,300*text.split(/\s+/).length))}
+function talking(on,level){chatEl.classList.toggle("speaking",on);diaState.textContent=on?({en:"Speaking…",hi:"बोल रही हूँ…",mr:"बोलत आहे…"})[lang]:"Your virtual owner · online";
+  window.DiaFace?.speak(on,level);window.Office3D?.talk(on)}
+let big=true;try{big=localStorage.getItem("diaBigFace")!=="0"}catch{}
+chatEl.classList.toggle("bigface",big);
+document.getElementById("diaFace").onclick=()=>{big=chatEl.classList.toggle("bigface");try{localStorage.setItem("diaBigFace",big?"1":"0")}catch{}};
+const clean=t=>t.replace(/₹\s?([\d,]+)/g,(m,n)=>n+(lang==="en"?" rupees":" रुपये")).replace(/[*_#`]/g,"");
+function stopVoice(){window.speechSynthesis?.cancel();if(curAudio){curAudio.pause();curAudio=null}}
+async function cloudSpeak(text,done){
+  const r=await fetch("/api/dia/tts",{method:"POST",headers:{"content-type":"application/json",authorization:"Bearer "+KEY},body:JSON.stringify({text:clean(text),lang})});
+  if(!r.ok)throw new Error("tts");
+  const a=new Audio(URL.createObjectURL(await r.blob()));curAudio=a;
+  audioCtx??=new (window.AudioContext||window.webkitAudioContext)();
+  const an=audioCtx.createAnalyser();an.fftSize=512;audioCtx.createMediaElementSource(a).connect(an);an.connect(audioCtx.destination);
+  const buf=new Uint8Array(an.fftSize);
+  const level=()=>{an.getByteTimeDomainData(buf);let s=0;for(const x of buf){const d=(x-128)/128;s+=d*d}return Math.sqrt(s/buf.length)};
+  a.onplay=()=>talking(true,level);a.onended=done;a.onerror=done;
+  await audioCtx.resume();await a.play();
 }
+function speak(text){
+  clearTimeout(talkT);stopVoice();
+  bubble("dia",text.length>90?text.slice(0,88)+"…":text,false);
+  const done=()=>{talking(false);talkT=setTimeout(()=>bubble("dia","",false),4000)};
+  const browser=()=>{
+    if(!window.speechSynthesis){talking(true);talkT=setTimeout(done,Math.min(9000,300*text.split(/\s+/).length));return}
+    const u=new SpeechSynthesisUtterance(clean(text));
+    const v=pickVoice();if(v){u.voice=v;u.lang=v.lang}else u.lang=LANGS[lang].code;
+    // Natural voices sound best untouched; older robotic ones get a little lift.
+    const nat=v&&/natural|online|neural/i.test(v.name);u.rate=nat?1:1.02;u.pitch=nat?1:1.1;
+    u.onstart=()=>talking(true);u.onboundary=()=>window.DiaFace?.word();u.onend=done;u.onerror=done;
+    speechSynthesis.speak(u);
+  };
+  if(!voiceOn){talking(true);talkT=setTimeout(done,Math.min(9000,300*text.split(/\s+/).length));return}
+  if(H.tts==="azure")cloudSpeak(text,done).catch(browser);else browser();
+}
+document.getElementById("langs").innerHTML=Object.entries(LANGS).map(([k,l])=>`<button type="button" class="chip lang" data-lang="${k}" aria-pressed="${k===lang}">${l.label}</button>`).join("");
+document.getElementById("langs").onclick=e=>{const b=e.target.closest("[data-lang]");if(!b)return;lang=b.dataset.lang;try{localStorage.setItem("diaLang",lang)}catch{}
+  document.querySelectorAll("[data-lang]").forEach(x=>x.setAttribute("aria-pressed",x.dataset.lang===lang));voiceNote();speak(LANGS[lang].hello)};
 function addMsg(role,text,action,more){
   const el=document.createElement("div");el.className="m "+role;
   el.innerHTML=`<p>${esc(text)}</p>`;
@@ -539,7 +581,7 @@ async function sendChat(text){
   addMsg("me",text);askIn.value="";
   if(!unlocked){const t="Please unlock with your director key first. It's the box at the top right. Then I can tell you everything about the office.";addMsg("dia",t);speak(t);askForKey();return}
   const typing=document.createElement("div");typing.className="m dia typing";typing.innerHTML="<p><i></i><i></i><i></i></p>";msgs.appendChild(typing);msgs.scrollTop=msgs.scrollHeight;
-  try{const r=await api("/api/dia/chat",{method:"POST",body:JSON.stringify({message:text,history})});
+  try{const r=await api("/api/dia/chat",{method:"POST",body:JSON.stringify({message:text,history,lang})});
     typing.remove();history.push({role:"me",text},{role:"dia",text:r.reply});addMsg("dia",r.reply,r.action,r.actions);speak(r.reply)}
   catch(err){typing.remove();addMsg("dia",err.message)}
 }
@@ -547,15 +589,16 @@ document.getElementById("askForm").onsubmit=e=>{e.preventDefault();sendChat(askI
 document.getElementById("chips").onclick=e=>{const c=e.target.closest(".chip");if(c)sendChat(c.textContent)};
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(SR){const bMic=document.getElementById("bMic");bMic.hidden=false;
-  bMic.onclick=()=>{const r=new SR();r.lang="en-IN";r.interimResults=false;bMic.classList.add("rec");
+  bMic.onclick=()=>{const r=new SR();r.lang=LANGS[lang].code;r.interimResults=false;bMic.classList.add("rec");
     r.onresult=e=>sendChat(e.results[0][0].transcript);r.onend=()=>bMic.classList.remove("rec");r.onerror=()=>bMic.classList.remove("rec");r.start()}}
 addMsg("dia","Namaskar! I'm Dia. Ask me what needs your decision, how the office is doing, or tell me to check and fix myself.");
-function greet(){const t="Namaskar! I'm Dia, and the office is ready. Ask me anything.";window.Office3D?.wave();speak(t)}
+function greet(){window.Office3D?.wave();speak(LANGS[lang].hello)}
 
-document.getElementById("diaMini").innerHTML='<img src="dia.jpg" alt="Dia">';
+document.getElementById("diaMini").innerHTML='<canvas width="112" height="112" aria-label="Dia"></canvas>';
+window.DiaFace?.mount(document.querySelector("#diaMini canvas"));window.DiaFace?.mount(document.getElementById("diaFaceCv"));
 let wsOn=false;
 async function start(){
-  try{await health();if(!H.db.ok){showSetup();return}
+  try{await health();voiceNote();if(!H.db.ok){showSetup();return}
     await load();init3d();await checkKey();loadKb();loadRecords();if(!wsOn){wsOn=true;connect()}}
   catch(e){if(e.message!=="setup"){H={offline:true,db:{ok:false}};showSetup();setTimeout(start,4000)}}
 }

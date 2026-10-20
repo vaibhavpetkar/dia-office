@@ -306,11 +306,22 @@ function openDesk(r, i) {
 /* ---------- People ---------- */
 function hair(style, color, scale = 1) {
   const g = new THREE.Group(), m = mat(color, { roughness: 0.38, metalness: 0.05 });
+  if (style === "dia") {
+    // Centre-parted long hair that frames her face, like her portrait.
+    m.roughness = 0.55;
+    const cap = mesh(new THREE.SphereGeometry(0.4, 32, 18, 0, Math.PI * 2, 0, Math.PI * 0.4), m);
+    cap.rotation.x = -0.5; cap.position.set(0, 0.06, -0.02); cap.scale.set(0.98, 1.12, 1); g.add(cap);
+    for (const s of [-1, 1]) {
+      const side = mesh(new THREE.SphereGeometry(0.405, 20, 20, Math.PI / 2 - s * 1.12 - 0.42, 0.84, 0.2, 1.9), m);
+      side.scale.set(1, 1.14, 1); side.position.y = 0.02; g.add(side);
+    }
+  } else {
   const cap = mesh(new THREE.SphereGeometry(0.385, 28, 18, 0, Math.PI * 2, 0, Math.PI * 0.52), m);
   cap.rotation.x = -0.42; cap.position.set(0, 0.04, -0.03); g.add(cap);
   // Side-swept fringe with a parting, so the forehead and eyes stay visible.
   const fringe = mesh(new THREE.SphereGeometry(0.395, 24, 10, -Math.PI * 0.05, Math.PI * 0.5, Math.PI * 0.2, Math.PI * 0.13), m);
   fringe.rotation.set(-0.15, 0, 0.18); g.add(fringe);
+  }
   if (style === "long" || style === "dia") {
     const back = mesh(new THREE.CapsuleGeometry(0.33, style === "dia" ? 0.95 : 0.55, 8, 20), m);
     back.position.set(0, style === "dia" ? -0.55 : -0.35, -0.16); back.scale.set(1.08, 1, 0.62); g.add(back);
@@ -333,9 +344,34 @@ function hair(style, color, scale = 1) {
   return g;
 }
 
+// Dia's face texture: the face area of the talking portrait (talkingface.js), feathered into her skin tone.
+let faceTex = null;
+function photoFace() {
+  const W = 320, H = 370, SX = 160, SY = 120; // forehead to chin, cheek to cheek, in dia.jpg pixels
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const mask = document.createElement("canvas"); mask.width = W; mask.height = H;
+  const m = mask.getContext("2d"), grad = m.createRadialGradient(W / 2, H / 2, 80, W / 2, H / 2, W / 2);
+  grad.addColorStop(0, "rgba(0,0,0,1)"); grad.addColorStop(1, "rgba(0,0,0,0)");
+  m.save(); m.translate(W / 2, H / 2); m.scale(1, H / W); m.translate(-W / 2, -H / 2); m.fillStyle = grad; m.fillRect(0, 0, W, W); m.restore();
+  faceTex = new THREE.CanvasTexture(c); faceTex.colorSpace = THREE.SRGBColorSpace;
+  const paint = src => {
+    g.globalCompositeOperation = "source-over"; g.clearRect(0, 0, W, H);
+    g.drawImage(src, SX, SY, W, H, 0, 0, W, H);
+    g.globalCompositeOperation = "destination-in"; g.drawImage(mask, 0, 0);
+    faceTex.needsUpdate = true;
+  };
+  if (window.DiaFace) window.DiaFace.onFrame(paint);
+  // Eyes land at eye height on the head and the chin at the bottom of the skull.
+  const geo = new THREE.SphereGeometry(0.364, 48, 40, Math.PI / 2 - 0.86, 1.72, 0.88, 1.5);
+  const face = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: faceTex, transparent: true, depthWrite: false, roughness: 0.55, emissive: "#ffffff", emissiveMap: faceTex, emissiveIntensity: 0.22 }));
+  face.scale.set(0.94, 1.12, 0.98);
+  return face;
+}
+
 function makePerson(a, { scale = 1, dia = false } = {}) {
   const look = a.look || {};
-  const skin = mat(dia ? "#c98a64" : SKIN[look.skin ?? 0] || SKIN[0], { roughness: 0.5 });
+  const skin = mat(dia ? "#c08a69" : SKIN[look.skin ?? 0] || SKIN[0], { roughness: 0.5 });
   const shirtColor = dia ? "#1f6b45" : look.shirt || "#2b6cb0";
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body); root.userData.agentId = a.id;
@@ -391,9 +427,10 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
 
   // Head with a friendly face.
   const head = new THREE.Group(); head.position.y = 1.86; body.add(head);
-  const skull = mesh(new THREE.SphereGeometry(0.36, 32, 24), skin); skull.scale.set(1, 1.04, 0.98); head.add(skull);
+  const skull = mesh(new THREE.SphereGeometry(0.36, 32, 24), skin); skull.scale.set(dia ? 0.94 : 1, dia ? 1.12 : 1.04, 0.98); head.add(skull);
   for (const s of [-1, 1]) { const ear = mesh(new THREE.SphereGeometry(0.075, 10, 8), skin); ear.position.set(s * 0.35, -0.02, 0); ear.scale.set(0.6, 1, 0.8); head.add(ear); }
   const eyes = new THREE.Group(); eyes.position.set(0, 0.03, 0.3); head.add(eyes);
+  const cartoon = [eyes];
   for (const s of [-1, 1]) {
     const e = new THREE.Group(); e.position.x = s * 0.125; eyes.add(e);
     const white = new THREE.Mesh(new THREE.SphereGeometry(dia ? 0.078 : 0.068, 16, 12), new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.3 }));
@@ -407,9 +444,9 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
       lash.position.set(s * 0.03 + i * 0.03, 0.07, 0.03); lash.rotation.z = -s * 0.35 + i * 0.25; e.add(lash);
     }
     const brow = mesh(new THREE.BoxGeometry(0.12, 0.022, 0.02), mat(look.hair || "#2a1a14"), { cast: false });
-    brow.position.set(s * 0.125, 0.15, 0.31); brow.rotation.z = s * 0.14; head.add(brow);
+    brow.position.set(s * 0.125, 0.15, 0.31); brow.rotation.z = s * 0.14; head.add(brow); cartoon.push(brow);
     const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 8), new THREE.MeshStandardMaterial({ color: "#f08a8a", transparent: true, opacity: 0.45, roughness: 1 }));
-    cheek.position.set(s * 0.2, -0.08, 0.27); cheek.scale.set(1, 0.6, 0.4); head.add(cheek);
+    cheek.position.set(s * 0.2, -0.08, 0.27); cheek.scale.set(1, 0.6, 0.4); head.add(cheek); cartoon.push(cheek);
   }
   const nose = mesh(new THREE.SphereGeometry(0.035, 10, 8), skin, { cast: false }); nose.position.set(0, -0.04, 0.35); head.add(nose);
   // Smile (always) and an open mouth that shows while talking.
@@ -417,7 +454,11 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
   smile.position.set(0, -0.12, 0.32); smile.rotation.set(-0.25, 0, Math.PI); head.add(smile);
   const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.06, 16, 10), new THREE.MeshStandardMaterial({ color: "#5a1a22", roughness: 0.6 }));
   mouth.position.set(0, -0.15, 0.31); mouth.scale.set(1.1, 0.05, 0.4); head.add(mouth);
-  if (look.bindi || dia) { const b = mesh(new THREE.SphereGeometry(0.022, 10, 8), mat("#c2264b"), { cast: false }); b.position.set(0, 0.17, 0.345); head.add(b); }
+  if (dia) { // Dia wears her real face: the live talking portrait, wrapped onto the front of her head.
+    for (const o of [...cartoon, nose, smile, mouth]) o.visible = false;
+    head.add(photoFace());
+  }
+  if (look.bindi && !dia) { const b = mesh(new THREE.SphereGeometry(0.022, 10, 8), mat("#c2264b"), { cast: false }); b.position.set(0, 0.17, 0.345); head.add(b); }
   if (look.glasses) {
     const gm = mat("#1d1d1d", { metalness: 0.3 });
     for (const s of [-1, 1]) { const ring = mesh(new THREE.TorusGeometry(0.075, 0.012, 8, 20), gm, { cast: false }); ring.position.set(s * 0.125, 0.03, 0.36); head.add(ring); }
@@ -602,6 +643,7 @@ renderer.setAnimationLoop(() => {
       p.eyes.scale.y = (p.t % 4.3) < 0.12 ? 0.1 : 1;
       p.head.rotation.y = Math.sin(p.t * 0.6) * 0.18;
       p.head.rotation.z = Math.sin(p.t * 0.9) * 0.04;
+      if (id === "dia") { p.body.rotation.z = Math.sin(p.t * 0.35) * 0.018; p.body.rotation.y = Math.sin(p.t * 0.22) * 0.06; if (!p.speaking) p.head.rotation.x = Math.sin(p.t * 0.5) * 0.03; }
       if (p.gem) { p.gem.rotation.y += dt * 1.6; p.gem.position.y = 2.42 + Math.sin(p.t * 2) * 0.05; }
     }
     // Arms: typing while working, waving when Dia greets, resting otherwise.
@@ -609,6 +651,12 @@ renderer.setAnimationLoop(() => {
     if (p.wave > 0) {
       p.wave -= dt;
       R.rotation.z = -2.5 + Math.sin(now * 12) * 0.35; R.rotation.x = 0;
+    } else if (p.speaking && !reduceMotion) {
+      // Talking with her hands: slow, relaxed gestures that never repeat exactly.
+      const g1 = Math.sin(now * 1.9) * 0.5 + Math.sin(now * 3.1) * 0.2, g2 = Math.sin(now * 1.6 + 2) * 0.5 + Math.sin(now * 2.7) * 0.2;
+      R.rotation.x += ((-0.75 + g1 * 0.35) - R.rotation.x) * 0.08; R.rotation.z += ((0.35 + g1 * 0.12) - R.rotation.z) * 0.08;
+      L.rotation.x += ((-0.55 + g2 * 0.3) - L.rotation.x) * 0.08; L.rotation.z += ((-0.3 - g2 * 0.1) - L.rotation.z) * 0.08;
+      p.head.rotation.x = Math.sin(now * 4.2) * 0.04 + Math.sin(now * 1.3) * 0.03;
     } else if (p.working && id !== "dia") {
       L.rotation.x = -1.1 + Math.sin(now * 16) * 0.08; R.rotation.x = -1.1 + Math.sin(now * 16 + 1.5) * 0.08;
       L.rotation.z = -0.25; R.rotation.z = 0.25;
