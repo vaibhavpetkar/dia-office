@@ -49,3 +49,19 @@ jobs:
           cache-dependency-path: dia-ai/requirements.txt
       - run: pip install -r requirements.txt
       - run: python selftest.py
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dia-office
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t dia-office .
+      - name: Image starts and shows the setup screen without a database
+        run: |
+          docker run -d --name office -p 8080:8080 -e DATABASE_URL=postgres://none:none@127.0.0.1:1/none dia-office
+          for i in $(seq 1 20); do curl -fs localhost:8080/api/health && break; sleep 1; done
+          curl -fs localhost:8080/api/health | grep -q '"ok":false'
+          curl -fs localhost:8080/ | grep -q "Virtual Office"

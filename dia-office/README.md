@@ -102,8 +102,15 @@ SQL files in `src/migrations/` run once each, in order, on startup. To change th
 Anyone who opens the page sees the office floor and counts. Client names, decisions, money and the activity feed are only sent after the director key is entered, over the API and the live updates. Interview links expire after 14 days, and wrong director keys are rate-limited.
 
 ## Deploying
-Run it on one small server (EC2 or a VPS) behind nginx with HTTPS, using `npm start` under pm2 or systemd. Use RDS or the same server for Postgres. Keep `ADMIN_TOKEN` secret, and put the office behind HTTPS before using it with real candidates.
+
+`docker build -t dia-office .` builds one small image (health check included). To run the database and the office together on one machine: `docker compose --profile app up -d --build`.
+
+For AWS (EC2 + RDS or Neon + Bedrock + SES, HTTPS with Caddy), follow **[docs/DEPLOY-AWS.md](docs/DEPLOY-AWS.md)** step by step. Keep `ADMIN_TOKEN` secret and use HTTPS before real clients or candidates see the office.
 
 ## Honest limits
 - The AI plans, analyses, scores and writes drafts. Building and deploying real client software is still done by your developers (or Claude Code). The office tracks it when you move the stage.
 - AI interview scores support a person's decision; they don't replace it. Keep a human approving every hire.
+- There is one director key. Separate logins and roles for several people are not built yet.
+- Dia's face in the chat is her portrait with blinking, breathing and mouth movement layered on top; the 3D Dia on the floor is a stylised model dressed to match. A photoreal 3D head would need a dedicated avatar service.
+- Floor 2 departments start empty: their desks fill as you hire into them. The diners in the canteen are decoration.
+- The Python agents in `dia-ai/` are a separate prototype; the office does not call them.
