@@ -57,6 +57,8 @@ export async function selfCheck({ repair = true, getHealth } = {}) {
     try { const r = await fetch(`${process.env.OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) }); if (!r.ok) throw new Error(r.status); }
     catch (e) { findings.push({ level: "bad", text: `Ollama is not answering at ${process.env.OLLAMA_URL}. Start it with "ollama serve".` }); }
   }
+  if (provider === "anthropic" && !/^sk-ant-/.test((process.env.ANTHROPIC_API_KEY || "").trim()))
+    findings.push({ level: "bad", text: "ANTHROPIC_API_KEY is missing in .env. Run npm run setup -- anthropic and paste your key when asked." });
   if (provider === "bedrock" && /^(paste-|$)/.test(process.env.BEDROCK_FAST_MODEL_ID || ""))
     findings.push({ level: "bad", text: "BEDROCK_FAST_MODEL_ID is not set in .env. Copy the Haiku inference profile ID from the Bedrock console." });
   const budget = parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0");

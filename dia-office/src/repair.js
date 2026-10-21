@@ -29,7 +29,7 @@ export function repairable() {
 
 export async function proposeFix(problemId) {
   if ((process.env.LLM_PROVIDER || "mock") === "mock")
-    throw err(400, "I can't write code fixes in free test mode. Set LLM_PROVIDER to bedrock (or ollama) and I'll draft one for you to approve.");
+    throw err(400, "I can't write code fixes in free test mode. Set LLM_PROVIDER to anthropic (or bedrock / ollama) and I'll draft one for you to approve.");
   const p = problemId ? problems.find(x => x.id === Number(problemId)) : repairable()[0];
   if (!p) throw err(404, "I don't have a recent error that points into the office code, so there's nothing to repair.");
   const frame = ownFrame(p.stack);

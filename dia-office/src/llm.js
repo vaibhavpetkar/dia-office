@@ -1,14 +1,18 @@
-// One door to the AI. Swap providers with LLM_PROVIDER: mock | ollama | bedrock.
-// tier "fast" = cheap model (Haiku / small local), tier "smart" = Sonnet for big decisions.
+// One door to the AI. Swap providers with LLM_PROVIDER: mock | ollama | anthropic | bedrock.
+// tier "fast" = everyday worker model (Sonnet / Haiku / small local), tier "smart" = strongest model for big decisions.
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
+import Anthropic from "@anthropic-ai/sdk";
 import { q, one } from "./db.js";
 
 const P = () => process.env.LLM_PROVIDER || "mock";
 let bedrock;
 const br = () => (bedrock ??= new BedrockRuntimeClient({ region: process.env.AWS_REGION }));
+let anthropic;
+const an = () => (anthropic ??= new Anthropic()); // reads ANTHROPIC_API_KEY
 
 const modelFor = tier => {
   if (P() === "bedrock") return tier === "smart" ? process.env.BEDROCK_SMART_MODEL_ID : process.env.BEDROCK_FAST_MODEL_ID;
+  if (P() === "anthropic") return tier === "smart" ? process.env.ANTHROPIC_SMART_MODEL || "claude-opus-5-5" : process.env.ANTHROPIC_FAST_MODEL || "claude-sonnet-5-5";
   if (P() === "ollama") return tier === "smart" ? process.env.OLLAMA_SMART_MODEL : process.env.OLLAMA_FAST_MODEL;
   return "mock";
 };
@@ -78,6 +82,22 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
     const j = await res.json();
     text = j.message?.content || "";
     inTok = j.prompt_eval_count || 0; outTok = j.eval_count || 0;
+  } else if (P() === "anthropic") {
+    // These models always think a little first; effort keeps that short, and the extra max_tokens leaves room for it
+    // (only tokens actually used are billed). Fallbacks re-run a declined request on another Claude model.
+    const effort = process.env[tier === "smart" ? "ANTHROPIC_SMART_EFFORT" : "ANTHROPIC_FAST_EFFORT"] || (tier === "smart" ? "medium" : "low");
+    const res = await an().beta.messages.create({
+      model, max_tokens: maxTokens + 8000,
+      system: [{ type: "text", text: sys, cache_control: { type: "ephemeral" } }],
+      messages: [{ role: "user", content: prompt }],
+      output_config: { effort },
+      ...(process.env.ANTHROPIC_FALLBACKS === "false" ? {} : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" })
+    });
+    if (res.stop_reason === "refusal") throw new Error(`Claude declined this request (${res.stop_details?.category || "policy"}).`);
+    text = res.content.filter(c => c.type === "text").map(c => c.text).join("");
+    const u = res.usage || {};
+    inTok = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
+    outTok = u.output_tokens || 0;
   } else {
     const system = [{ text: sys }];
     if (process.env.BEDROCK_PROMPT_CACHE === "true") system.push({ cachePoint: { type: "default" } });
@@ -92,7 +112,7 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
 
   const pin = parseFloat(process.env[tier === "smart" ? "PRICE_SMART_IN" : "PRICE_FAST_IN"] || "0");
   const pout = parseFloat(process.env[tier === "smart" ? "PRICE_SMART_OUT" : "PRICE_FAST_OUT"] || "0");
-  const cost = P() === "bedrock" ? (inTok * pin + outTok * pout) / 1e6 : 0;
+  const cost = P() === "bedrock" || P() === "anthropic" ? (inTok * pin + outTok * pout) / 1e6 : 0;
   await q("INSERT INTO llm_usage (agent_id,model,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5)",
     [agent, model, inTok, outTok, cost]);
   return text;
@@ -101,8 +121,9 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
 // Embeddings for the company knowledge base.
 export async function embed(text) {
   const dim = parseInt(process.env.EMBED_DIM || "768", 10);
-  if (P() === "mock") {
-    // Cheap hashed bag-of-words vector so search still roughly works without any AI.
+  if (P() === "mock" || P() === "anthropic") {
+    // Cheap hashed bag-of-words vector so search still roughly works without any AI
+    // (the Anthropic API has no embeddings model, so it uses this too).
     const v = new Array(dim).fill(0);
     for (const w of text.toLowerCase().match(/[a-z0-9]+/g) || []) {
       let h = 0; for (const ch of w) h = (h * 31 + ch.charCodeAt(0)) >>> 0;

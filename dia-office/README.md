@@ -52,7 +52,14 @@ ollama pull nomic-embed-text
 ```
 Set `LLM_PROVIDER=ollama` and `EMBED_DIM=768`.
 
-### Claude on Amazon Bedrock (production)
+### Claude with an Anthropic API key (easiest real AI)
+1. Create a key at https://console.anthropic.com/settings/keys and add credit under **Billing**.
+2. In this folder run `npm run setup -- anthropic` and paste the key when asked. It stays hidden, and the script sets `LLM_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` in `.env` for you. Never paste the key into a chat.
+3. Restart with `npm start`. The team uses Claude Sonnet 5.5 (`ANTHROPIC_FAST_MODEL`) and Dia's big decisions use Claude Opus 5.5 (`ANTHROPIC_SMART_MODEL`).
+
+The Anthropic API has no image or embeddings model, so keep `IMAGE_PROVIDER=mock` (test posters) until Bedrock works, and knowledge search uses a free built-in word match.
+
+### Claude on Amazon Bedrock
 1. Bedrock access approved (use-case form submitted as root/admin).
 2. In `.env`: `LLM_PROVIDER=bedrock`, `AWS_REGION`, keys, and the **inference profile IDs** for Haiku (`BEDROCK_FAST_MODEL_ID`) and Sonnet (`BEDROCK_SMART_MODEL_ID`) copied from the Bedrock model catalog.
 3. For embeddings with Titan v2, set `EMBED_DIM=1024` **before the first run**. If you change it later, drop the `kb_chunks` table and re-add your documents.
@@ -66,7 +73,7 @@ Dia's face is her portrait brought to life on a canvas (`public/talkingface.js`)
 
 In 3D she has a realistic full body (`public/diabody.js`): a rigged human from Microsoft's [Rocketbox](https://github.com/microsoft/Microsoft-Rocketbox) library (MIT, see `public/models/dia/LICENSE-rocketbox.md`), dressed in her green blazer, black top and charcoal trousers, with her face, skin tone, brown eyes, bindi and long dark hair. Motion-captured clips move her body (relaxed standing, talking gestures, a wave), and the model's facial blendshapes move her lips with the same voice level as the chat face, blink and smile. She stands in her cabin on floor 1 and welcomes visitors in the ground-floor **Entrance** (glass doors, reception with lifts, velvet lounge, art wall, coffee bar, hot desks). If the model can't load, the simple 3D Dia is shown instead.
 
-Pick **EN / हिं / मरा** under her name. Dia answers in that language (with Ollama or Bedrock; free test mode only greets in Hindi and Marathi) and the microphone listens in it.
+Pick **EN / हिं / मरा** under her name. Dia answers in that language (with Anthropic, Bedrock or Ollama; free test mode only greets in Hindi and Marathi) and the microphone listens in it.
 
 | Voice | How | Quality |
 |---|---|---|
