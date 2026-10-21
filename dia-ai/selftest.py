@@ -9,6 +9,7 @@ from unittest import mock
 os.environ["DIA_DATA_DIR"] = tempfile.mkdtemp()  # test data goes to a temp folder, not data/
 os.environ.setdefault("DIA_CEO_MODEL_ID", "test")
 os.environ.setdefault("DIA_WORKER_MODEL_ID", "test")
+os.environ["DIA_IMAGE_PROVIDER"] = "bedrock"  # the image test uses a fake Bedrock client
 
 from dia.ceo import build_ceo  # noqa: E402
 from dia.communication import check_calendar, schedule_meeting, send_message  # noqa: E402
@@ -41,6 +42,8 @@ fake_bedrock = mock.MagicMock()
 fake_bedrock.invoke_model.return_value = {"body": io.BytesIO(json.dumps({"images": [fake_png]}).encode())}
 with mock.patch("boto3.client", return_value=fake_bedrock):
     check("Creative: image saved (fake model)", "Saved images" in generate_image(prompt="red shoe"))
+os.environ["DIA_IMAGE_PROVIDER"] = "off"
+check("Creative: images off gives a brief", "Image brief" in generate_image(prompt="red shoe"))
 
 print("\nAll good! Next: fill .env, run check_setup.py, then main.py" if not failures
       else f"\n{failures} check(s) failed - send this output to Claude.")

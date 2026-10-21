@@ -1,6 +1,6 @@
 # Dia AI — Smart Company API (starter)
 
-AI CEO → Managers → Worker agents → Tools, built on AWS (Amazon Bedrock).
+AI CEO → Managers → Worker agents → Tools, built on Claude (Anthropic API, or Amazon Bedrock).
 
 This version has the **CEO** and four managers working end to end: **Sales**, **Support**, **Creative** and **Communication**.
 Every new department copies the pattern in `dia/sales.py`.
@@ -23,27 +23,42 @@ dia/communication.py Level 2  Communication Manager
 approve.py         owner approval desk: list / approve / reject waiting actions
 knowledge/         company docs the Support Manager answers from (replace faq.md)
 dia/records.py     simple JSON storage in data/ (becomes DynamoDB later)
-check_setup.py     checks your AWS login and Bedrock model access
+check_setup.py     checks your Anthropic API key (or AWS + Bedrock) and model access
 selftest.py        offline test of all tools (no AWS needed)
 setup.bat/setup.sh one-time setup for Windows / Mac-Linux
 dia/approvals.py   risky actions wait here for the owner (data/approvals.json)
-dia/models.py      which Bedrock model each level uses
+dia/models.py      which Claude model each level uses (Anthropic API or Bedrock)
 ```
 
 ## Run it on your computer
 
 ### 1. Install once
 - **Python 3.11 or newer**: https://www.python.org/downloads/ (on Windows, tick **"Add Python to PATH"** during install)
-- **AWS CLI v2**: https://aws.amazon.com/cli/
+- An **Anthropic API key** from https://console.anthropic.com/settings/keys (or, instead, AWS CLI v2 for Bedrock)
 
 ### 2. Set up the project (one command)
 - **Windows:** double-click `setup.bat` (or run `setup.bat` in a terminal inside this folder)
 - **Mac/Linux:** `bash setup.sh`
 
 This creates `.venv`, installs everything, creates `.env`, and runs `selftest.py`.
-All lines should say `[OK]`. This step needs no AWS.
+All lines should say `[OK]`. This step needs no API key.
 
-### 3. Connect AWS
+### 3. Connect Claude (Anthropic API key, the easy way)
+1. Create a key at https://console.anthropic.com/settings/keys and add a few dollars of credit under **Billing**.
+2. Open `.env` in Notepad (`notepad .env` in this folder) and paste the key after `ANTHROPIC_API_KEY=`, so the line reads
+   `ANTHROPIC_API_KEY=sk-ant-...` with no spaces or quotes. Save. Never paste the key into a chat or commit `.env`.
+3. The rest of `.env` is already right:
+   ```
+   DIA_PROVIDER=anthropic
+   DIA_CEO_MODEL_ID=claude-opus-5-5
+   DIA_WORKER_MODEL_ID=claude-sonnet-5-5
+   DIA_IMAGE_PROVIDER=off
+   ```
+   The Anthropic API has no image model, so with `DIA_IMAGE_PROVIDER=off` the Creative team writes an image brief
+   instead of a picture. Set it to `bedrock` once you have Amazon Nova Canvas access (needs step 3b below).
+
+### 3b. Or connect Amazon Bedrock instead
+Set `DIA_PROVIDER=bedrock` in `.env`, then:
 1. Log in from the terminal: `aws configure` (use the access key of an IAM user, not root).
 2. Give that IAM user permission to call Claude. In IAM -> Users -> your user -> **Add permissions -> Create inline policy -> JSON**, paste:
    ```json
@@ -58,10 +73,10 @@ All lines should say `[OK]`. This step needs no AWS.
    Name it `dia-ai-bedrock` and save.
 3. In the AWS console (region **us-east-1**), open **Amazon Bedrock -> Model catalog** and make sure you have access to
    **Claude Opus 5.5**, **Claude Sonnet 5.5** and **Amazon Nova Canvas** (submit the Anthropic use-case form if asked).
-4. `.env` (created by setup) already has the right IDs:
+4. The model IDs in `.env` work as they are (`anthropic.` is added for Bedrock automatically):
    ```
-   DIA_CEO_MODEL_ID=anthropic.claude-opus-5-5
-   DIA_WORKER_MODEL_ID=anthropic.claude-sonnet-5-5
+   DIA_CEO_MODEL_ID=claude-opus-5-5
+   DIA_WORKER_MODEL_ID=claude-sonnet-5-5
    ```
    Note: these newer Claude models use Bedrock's Messages API endpoint (`bedrock-mantle`), so the IDs start with
    `anthropic.`, not `us.`. The `us.anthropic...` inference-profile IDs only work with the older Converse API.
@@ -79,7 +94,7 @@ python main.py            # chat with the AI CEO
 Try these one by one:
 1. `Find our new leads and prepare a sales email for each one about our AI chatbot product.`
 2. `A customer Asha asks how to reset her password, and Ravi wants a refund.`
-3. `Make 2 launch images for our AI chatbot app and write a LinkedIn post.` (images go to `data/images/`)
+3. `Make 2 launch images for our AI chatbot app and write a LinkedIn post.` (images go to `data/images/`; with images off you get image briefs)
 4. `Book a 1-hour team meeting next Monday at 11:00 with ravi@example.com and asha@example.com about the launch.`
 5. The whole company at once: `We launch our new AI chatbot next Monday. Make 2 launch images, write a
    LinkedIn post, book a 1-hour team meeting on Monday at 11:00 with ravi@example.com and

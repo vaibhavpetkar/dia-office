@@ -126,7 +126,7 @@ function mockReply(msg, snap) {
     return { reply: `Here's today: ${s.leads} leads (${s.hot} hot), ${s.projects} project${s.projects === 1 ? "" : "s"} with ${s.live} live, ${open} open support ticket${open === 1 ? "" : "s"}, ` +
       `${inr(snap.money.received)} received this month, and ${ap.length} decision${ap.length === 1 ? "" : "s"} waiting for you.` };
   }
-  return { reply: "In free test mode I understand decisions, leads, projects, tickets, invoices, profit, the team and my own health. Set LLM_PROVIDER to ollama or bedrock and I can talk about anything." };
+  return { reply: "In free test mode I understand decisions, leads, projects, tickets, invoices, profit, the team and my own health. Set LLM_PROVIDER to anthropic, bedrock or ollama and I can talk about anything." };
 }
 
 // A goal with several jobs ("add lead X needs Y; ticket from Z: ... then check yourself") becomes several actions.

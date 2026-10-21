@@ -1,33 +1,51 @@
-"""Check that AWS + Bedrock are ready: python check_setup.py"""
+"""Check that the AI is ready: python check_setup.py
+
+DIA_PROVIDER=anthropic checks your Anthropic API key; DIA_PROVIDER=bedrock checks AWS + Bedrock.
+"""
 import os
 
-import boto3
-from anthropic import AnthropicBedrockMantle
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Strongest first. Used to find what this AWS account can use when the .env models fail.
+from dia.models import model_id, provider, region  # noqa: E402
+
+# Strongest first. Used to find what this account can use when the .env models fail.
 CLAUDE_CANDIDATES = [
-    "anthropic.claude-opus-5-5", "anthropic.claude-fable-5-1", "anthropic.claude-opus-5",
-    "anthropic.claude-opus-4-8", "anthropic.claude-sonnet-5-5", "anthropic.claude-sonnet-5",
-    "anthropic.claude-haiku-5-5", "anthropic.claude-haiku-4-5",
+    "claude-opus-5-5", "claude-fable-5-1", "claude-opus-5", "claude-opus-4-8",
+    "claude-sonnet-5-5", "claude-sonnet-5", "claude-haiku-5-5", "claude-haiku-4-5",
 ]
-region = os.environ.get("AWS_REGION", "us-east-1")
-
-try:
-    arn = boto3.client("sts").get_caller_identity()["Arn"]
-    print(f"[OK] AWS login works: {arn}")
-except Exception as e:
-    raise SystemExit(f"[FAIL] AWS login: {e}\n       Run 'aws configure' first.")
-
-client = AnthropicBedrockMantle(aws_region=region)
 
 
-def try_model(model_id: str) -> str | None:
+def make_client():
+    if provider() == "anthropic":
+        key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+        if not key or key.startswith("paste-"):
+            raise SystemExit("[FAIL] ANTHROPIC_API_KEY is empty in .env.\n"
+                             "       Create a key at https://console.anthropic.com/settings/keys and paste it into .env.")
+        if not key.startswith("sk-ant-"):
+            print("[WARN] ANTHROPIC_API_KEY does not start with sk-ant- . Check you copied the whole key.")
+        from anthropic import Anthropic
+        print(f"[OK] Using the Anthropic API (key ending ...{key[-4:]})")
+        return Anthropic()
+
+    import boto3
+    from anthropic import AnthropicBedrockMantle
+    try:
+        arn = boto3.client("sts").get_caller_identity()["Arn"]
+        print(f"[OK] AWS login works: {arn}")
+    except Exception as e:
+        raise SystemExit(f"[FAIL] AWS login: {e}\n       Run 'aws configure' first.")
+    return AnthropicBedrockMantle(aws_region=region())
+
+
+client = make_client()
+
+
+def try_model(model: str) -> str | None:
     """Return None if the model answers, else a short error."""
     try:
-        client.messages.create(model=model_id, max_tokens=1000,
+        client.messages.create(model=model, max_tokens=1000,
                                messages=[{"role": "user", "content": "Reply with just: OK"}])
         return None
     except Exception as e:
@@ -36,40 +54,38 @@ def try_model(model_id: str) -> str | None:
 
 failed = False
 for env_var in ("DIA_CEO_MODEL_ID", "DIA_WORKER_MODEL_ID"):
-    model_id = os.environ.get(env_var)
-    if not model_id:
+    if not os.environ.get(env_var):
         print(f"[FAIL] {env_var} is empty in .env")
         failed = True
         continue
-    error = try_model(model_id)
-    print(f"[OK] {env_var} ({model_id})" if error is None else f"[FAIL] {env_var} ({model_id}): {error[:200]}")
+    model = model_id(env_var)
+    error = try_model(model)
+    print(f"[OK] {env_var} ({model})" if error is None else f"[FAIL] {env_var} ({model}): {error[:300]}")
     failed |= error is not None
 
 if failed:
     print("\nScanning which Claude models your account can use...")
+    prefix = "anthropic." if provider() == "bedrock" else ""
     for candidate in CLAUDE_CANDIDATES:
-        error = try_model(candidate)
-        print(f"   {'[available]    ' if error is None else '[not available]'} {candidate}")
+        error = try_model(prefix + candidate)
+        print(f"   {'[available]    ' if error is None else '[not available]'} {prefix}{candidate}")
     print("Put available models into .env (CEO = strongest, worker = a cheaper one), then run this again.")
-    print("\nFull error for anthropic.claude-sonnet-5 (open to all Bedrock customers):")
-    print("  ", try_model("anthropic.claude-sonnet-5") or "no error")
-    print("\nTesting the older Bedrock API (Converse) with Claude Sonnet 4.6:")
-    try:
-        boto3.client("bedrock-runtime", region_name=region).converse(
-            modelId="us.anthropic.claude-sonnet-4-6",
-            messages=[{"role": "user", "content": [{"text": "Reply with just: OK"}]}],
-        )
-        print("   [available] older API works - your account can use Claude.")
-    except Exception as e:
-        print(f"   [not available] {e}")
+    if provider() == "anthropic":
+        print("A 401 error means the key is wrong; 'credit balance is too low' means add credits under "
+              "console.anthropic.com -> Billing.")
 
-image_model = os.environ.get("DIA_IMAGE_MODEL_ID", "amazon.nova-canvas-v1:0")
-try:
-    image_models = boto3.client("bedrock", region_name=region).list_foundation_models(byOutputModality="IMAGE")
-    ids = [m["modelId"] for m in image_models["modelSummaries"]]
-    if image_model in ids:
-        print(f"[OK] Image model {image_model}")
-    else:
-        print(f"[FAIL] Image model {image_model} not found in {region}. Image models here: {', '.join(ids) or 'none'}")
-except Exception as e:
-    print(f"[FAIL] Image model check: {e}")
+if os.environ.get("DIA_IMAGE_PROVIDER", "off").strip().lower() != "bedrock":
+    print("[INFO] Image generation is off. The Creative team writes image briefs instead of pictures.\n"
+          "       (The Anthropic API has no image model. Set DIA_IMAGE_PROVIDER=bedrock once Bedrock works.)")
+else:
+    import boto3
+    image_model = os.environ.get("DIA_IMAGE_MODEL_ID", "amazon.nova-canvas-v1:0")
+    try:
+        image_models = boto3.client("bedrock", region_name=region()).list_foundation_models(byOutputModality="IMAGE")
+        ids = [m["modelId"] for m in image_models["modelSummaries"]]
+        if image_model in ids:
+            print(f"[OK] Image model {image_model}")
+        else:
+            print(f"[FAIL] Image model {image_model} not found in {region()}. Image models here: {', '.join(ids) or 'none'}")
+    except Exception as e:
+        print(f"[FAIL] Image model check: {e}")

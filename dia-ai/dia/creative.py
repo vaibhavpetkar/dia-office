@@ -23,6 +23,10 @@ def generate_image(prompt: str, count: int = 1, width: int = 1024, height: int =
     count is 1-4. width/height must be multiples of 64 (e.g. 1024x1024 square, 1280x720 banner).
     avoid lists things that must NOT appear in the image."""
     count = max(1, min(count, MAX_IMAGES_PER_CALL))
+    if os.environ.get("DIA_IMAGE_PROVIDER", "off").strip().lower() != "bedrock":
+        # Claude (Anthropic API) can't draw pictures, so without Bedrock we hand back the prompt.
+        return ("Image generation is off (set DIA_IMAGE_PROVIDER=bedrock to use Amazon Nova Canvas). "
+                f"Image brief for a designer: {prompt[:1000]} | Avoid: {avoid}")
     model_id = os.environ.get("DIA_IMAGE_MODEL_ID", "amazon.nova-canvas-v1:0")
     client = boto3.client("bedrock-runtime", region_name=os.environ.get("AWS_REGION", "us-east-1"))
     response = client.invoke_model(modelId=model_id, body=json.dumps({

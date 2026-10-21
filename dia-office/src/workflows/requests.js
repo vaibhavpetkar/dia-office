@@ -139,7 +139,7 @@ const WORK = {
       prompt: `Company knowledge:\n${kb || "none"}\n\nRequest: ${r.brief}\nYour task: ${t.detail}\n\n` +
         `Return {"summary":"2-3 sentences","sections":[{"heading":"...","body":"..."}] (3-5 sections),"key_points":["..."] (3-6),"check":["facts to verify before using"]}`,
       mock: () => ({
-        summary: `A first look at ${t.title.replace(/^Research:\s*/, "")}. Free test mode writes a template; with Bedrock or Ollama the team writes the real brief.`,
+        summary: `A first look at ${t.title.replace(/^Research:\s*/, "")}. Free test mode writes a template; with real AI (Anthropic, Bedrock or Ollama) the team writes the real brief.`,
         sections: [
           { heading: "Who it is for", body: "The people who would use or buy this, what they need, and where they look for it." },
           { heading: "What others do", body: "Two or three competitors or examples, what they do well and where there is room." },
