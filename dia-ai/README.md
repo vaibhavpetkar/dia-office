@@ -27,7 +27,7 @@ check_setup.py     checks your Anthropic API key (or AWS + Bedrock) and model ac
 selftest.py        offline test of all tools (no AWS needed)
 setup.bat/setup.sh one-time setup for Windows / Mac-Linux
 dia/approvals.py   risky actions wait here for the owner (data/approvals.json)
-dia/models.py      which Claude model each level uses (Anthropic API or Bedrock)
+dia/models.py      which model each level uses (Anthropic API, Bedrock or local Ollama)
 ```
 
 ## Run it on your computer
@@ -80,6 +80,22 @@ Set `DIA_PROVIDER=bedrock` in `.env`, then:
    ```
    Note: these newer Claude models use Bedrock's Messages API endpoint (`bedrock-mantle`), so the IDs start with
    `anthropic.`, not `us.`. The `us.anthropic...` inference-profile IDs only work with the older Converse API.
+
+### 3c. Or run free on your own PC with Ollama
+1. Install [Ollama](https://ollama.com/download) and open it.
+2. Download two models that can call tools (the managers need that). With 16 GB+ memory:
+   `ollama pull gpt-oss:20b` and `ollama pull qwen3:8b`. With less memory use `qwen3:8b` and `qwen3:4b`.
+3. In `.env`:
+   ```
+   DIA_PROVIDER=ollama
+   DIA_CEO_MODEL_ID=gpt-oss:20b
+   DIA_WORKER_MODEL_ID=qwen3:8b
+   ```
+4. Free pictures: install [Stable Diffusion WebUI Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge),
+   add `--api` to its start options, load an SDXL model, and set `DIA_IMAGE_PROVIDER=local`.
+
+`check_setup.py` tells you if a model is missing or can't call tools. Local models are much smaller than Claude, so
+expect simpler plans and slower answers; switch back by setting `DIA_PROVIDER=anthropic`.
 
 ### 4. Test
 Activate the environment first (every new terminal):

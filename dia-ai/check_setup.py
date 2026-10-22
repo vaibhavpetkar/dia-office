@@ -1,14 +1,45 @@
 """Check that the AI is ready: python check_setup.py
 
-DIA_PROVIDER=anthropic checks your Anthropic API key; DIA_PROVIDER=bedrock checks AWS + Bedrock.
+DIA_PROVIDER=anthropic checks your Anthropic API key; DIA_PROVIDER=bedrock checks AWS + Bedrock;
+DIA_PROVIDER=ollama checks the local Ollama server and models.
 """
+import json
 import os
+import urllib.request
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
 from dia.models import model_id, provider, region  # noqa: E402
+
+
+def check_ollama() -> None:
+    url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+    try:
+        with urllib.request.urlopen(f"{url}/api/tags", timeout=5) as r:
+            have = {m["name"] for m in json.loads(r.read())["models"]}
+    except OSError as e:
+        raise SystemExit(f"[FAIL] Ollama is not answering at {url} ({e}). Open the Ollama app or run: ollama serve")
+    print(f"[OK] Ollama is running at {url}")
+    have |= {n.removesuffix(":latest") for n in have}
+    failed = False
+    for env_var in ("DIA_CEO_MODEL_ID", "DIA_WORKER_MODEL_ID"):
+        model = model_id(env_var)
+        if model not in have:
+            print(f"[FAIL] {env_var} ({model}) is not downloaded. Run: ollama pull {model}")
+            failed = True
+            continue
+        with urllib.request.urlopen(urllib.request.Request(f"{url}/api/show", data=json.dumps({"model": model}).encode()), timeout=30) as r:
+            tools = "tools" in json.loads(r.read()).get("capabilities", [])
+        print(f"[OK] {env_var} ({model})" if tools else
+              f"[FAIL] {env_var} ({model}) can't call tools, so the managers can't use it. Try gpt-oss:20b or qwen3:8b.")
+        failed |= not tools
+    raise SystemExit(1 if failed else 0)
+
+
+if provider() == "ollama":
+    check_ollama()
 
 # Strongest first. Used to find what this account can use when the .env models fail.
 CLAUDE_CANDIDATES = [

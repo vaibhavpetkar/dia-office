@@ -42,6 +42,11 @@ fake_bedrock = mock.MagicMock()
 fake_bedrock.invoke_model.return_value = {"body": io.BytesIO(json.dumps({"images": [fake_png]}).encode())}
 with mock.patch("boto3.client", return_value=fake_bedrock):
     check("Creative: image saved (fake model)", "Saved images" in generate_image(prompt="red shoe"))
+os.environ["DIA_IMAGE_PROVIDER"] = "local"
+fake_sd = mock.MagicMock()
+fake_sd.__enter__.return_value.read.return_value = json.dumps({"images": [fake_png]}).encode()
+with mock.patch("urllib.request.urlopen", return_value=fake_sd):
+    check("Creative: local Stable Diffusion image saved (fake server)", "Saved images" in generate_image(prompt="red shoe"))
 os.environ["DIA_IMAGE_PROVIDER"] = "off"
 check("Creative: images off gives a brief", "Image brief" in generate_image(prompt="red shoe"))
 

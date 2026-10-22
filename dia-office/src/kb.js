@@ -1,6 +1,6 @@
 // Company knowledge base (RAG) on Postgres + pgvector. Costs nothing beyond your own database.
 import { q } from "./db.js";
-import { embed } from "./llm.js";
+import { embed, embedderId } from "./llm.js";
 
 const vec = v => `[${v.join(",")}]`;
 
@@ -17,8 +17,18 @@ function chunk(text, size = 1200) {
 
 export async function addDoc(title, content) {
   const parts = chunk(content);
-  for (const c of parts) await q("INSERT INTO kb_chunks (title,content,embedding) VALUES ($1,$2,$3)", [title, c, vec(await embed(c))]);
+  for (const c of parts)
+    await q("INSERT INTO kb_chunks (title,content,embedding,embedder) VALUES ($1,$2,$3,$4)", [title, c, vec(await embed(c)), embedderId()]);
   return parts.length;
+}
+
+// After switching AI provider, old vectors no longer match new searches, so re-embed them once.
+// Runs in the background at start; a document that fails is tried again next start.
+export async function reindex() {
+  const id = embedderId();
+  const { rows } = await q("SELECT id, content FROM kb_chunks WHERE embedder IS DISTINCT FROM $1", [id]);
+  for (const r of rows) await q("UPDATE kb_chunks SET embedding=$1, embedder=$2 WHERE id=$3", [vec(await embed(r.content)), id, r.id]);
+  return rows.length;
 }
 
 export async function search(query, k = 4) {
