@@ -54,8 +54,19 @@ export async function selfCheck({ repair = true, getHealth } = {}) {
   const provider = process.env.LLM_PROVIDER || "mock";
   if (provider === "mock") findings.push({ level: "info", text: "AI is in free test mode (mock). Answers are canned." });
   if (provider === "ollama") {
-    try { const r = await fetch(`${process.env.OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) }); if (!r.ok) throw new Error(r.status); }
+    try {
+      const r = await fetch(`${process.env.OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(3000) }); if (!r.ok) throw new Error(r.status);
+      const have = new Set((await r.json()).models.flatMap(m => [m.name, m.name.replace(/:latest$/, "")]));
+      const want = ["OLLAMA_FAST_MODEL", "OLLAMA_SMART_MODEL", "OLLAMA_CODE_MODEL", "OLLAMA_EMBED_MODEL"].map(k => process.env[k]).filter(Boolean);
+      const missing = [...new Set(want)].filter(m => !have.has(m));
+      if (missing.length) findings.push({ level: "bad", text: `Ollama is missing ${missing.join(", ")}. Run npm run ollama:pull to download them.` });
+    }
     catch (e) { findings.push({ level: "bad", text: `Ollama is not answering at ${process.env.OLLAMA_URL}. Start it with "ollama serve".` }); }
+  }
+  if (process.env.IMAGE_PROVIDER === "local") {
+    const url = process.env.SD_URL || "http://127.0.0.1:7860";
+    try { const r = await fetch(`${url}/sdapi/v1/sd-models`, { signal: AbortSignal.timeout(3000) }); if (!r.ok) throw new Error(r.status); }
+    catch (e) { findings.push({ level: "warn", text: `Stable Diffusion is not answering at ${url}, so pictures will fail. Start Forge with --api.` }); }
   }
   if (provider === "anthropic" && !/^sk-ant-/.test((process.env.ANTHROPIC_API_KEY || "").trim()))
     findings.push({ level: "bad", text: "ANTHROPIC_API_KEY is missing in .env. Run npm run setup -- anthropic and paste your key when asked." });

@@ -9,6 +9,7 @@
     "dev": "node --watch src/server.js",
     "migrate": "node src/migrate.js",
     "setup": "node scripts/setup.js",
+    "ollama:pull": "node scripts/ollama-pull.js",
     "test": "node --test --test-concurrency=1"
   },
   "engines": {

@@ -46,11 +46,30 @@ On Windows, run the commands in PowerShell. `npm run setup` takes the place of `
 `LLM_PROVIDER=mock` runs the whole office with canned answers and no AI cost. Mock answers are repeatable: the same lead or candidate always gets the same score, so you can demo a flow twice and get the same result.
 
 ### Free local AI (Ollama)
+Everything runs on your own PC at no cost. Install [Ollama](https://ollama.com/download) and open it, then:
 ```bash
-ollama pull qwen2.5:7b
-ollama pull nomic-embed-text
+npm run setup -- ollama      # picks models that fit your PC's memory and turns Ollama on
+npm run ollama:pull          # one-time download, several GB
+npm start
 ```
-Set `LLM_PROVIDER=ollama` and `EMBED_DIM=768`.
+Each kind of work gets its own model:
+
+| Work | Setting | small (under 16 GB) | medium (16-31 GB) | large (32 GB+ or 24 GB GPU) |
+|---|---|---|---|---|
+| Team work and chatting with you (best local Hindi/Marathi) | `OLLAMA_FAST_MODEL` | gemma3:4b | gemma3:12b | gemma3:12b |
+| Dia's decisions, build plans (thinks first) | `OLLAMA_SMART_MODEL` | qwen3:8b | gpt-oss:20b | qwen3.5:27b |
+| Websites and code fixes | `OLLAMA_CODE_MODEL` | qwen2.5-coder:7b | qwen2.5-coder:14b | qwen3-coder:30b |
+| Knowledge search, 100+ languages | `OLLAMA_EMBED_MODEL` | qwen3-embedding:0.6b | qwen3-embedding:0.6b | qwen3-embedding:4b |
+
+Force a size with `npm run setup -- ollama small` (or `medium`, `large`). Any model from the Ollama library works; put its name in the setting and run `npm run ollama:pull` again.
+
+To get the most from local models the office gives them a 16K context window (`OLLAMA_NUM_CTX`, Ollama's 4K default silently cuts long prompts), lets the smart and code models think first (`OLLAMA_THINK`, set `false` if your PC is slow), and keeps models loaded for 30 minutes between steps. If you switch to Ollama after adding documents, the knowledge base re-embeds them on the next start. Dia's self-check tells you if a model is missing.
+
+Be realistic: local models are much smaller than Claude, ChatGPT or Gemini. They handle everyday team work well, but the cloud models still write better websites and make better decisions, and local answers are slower on a PC without a graphics card. You can switch back at any time with `npm run setup -- anthropic`.
+
+**Free pictures:** install [Stable Diffusion WebUI Forge](https://github.com/lllyasviel/stable-diffusion-webui-forge), add `--api` to its start options, load an SDXL model, and set `IMAGE_PROVIDER=local` (`SD_URL` defaults to `http://127.0.0.1:7860`). It needs a graphics card with about 8 GB.
+
+**Free voice and listening:** already built in. Dia speaks with the browser's voices (Edge has natural Hindi and Marathi voices) and the microphone uses the browser's own speech recognition.
 
 ### Claude with an Anthropic API key (easiest real AI)
 1. Create a key at https://console.anthropic.com/settings/keys and add credit under **Billing**.
@@ -86,7 +105,7 @@ Open **`/app.html`** (or press **Dia app ↗** in the office). It's made for a p
 
 Connect with the director key, then go to **Settings → App keys** to make a separate key for each phone or laptop. App keys can talk to Dia, give jobs and make decisions, but can't open the office records or make more keys, and you can switch one off at any time.
 
-Pictures: free test posters by default. Set `IMAGE_PROVIDER=bedrock` for real pictures from Amazon Nova Canvas (about $0.04 each, counted in the AI budget). Research comes from the AI's own knowledge and your company knowledge, not the live web yet, and each brief lists what to check. Videos are storyboards for now.
+Pictures: free test posters by default. Set `IMAGE_PROVIDER=local` for free pictures from Stable Diffusion on your PC (see Free local AI above), or `IMAGE_PROVIDER=bedrock` for Amazon Nova Canvas (about $0.04 each, counted in the AI budget). Research comes from the AI's own knowledge and your company knowledge, not the live web yet, and each brief lists what to check. Videos are storyboards for now.
 
 ## Teach Dia about your company (RAG)
 
