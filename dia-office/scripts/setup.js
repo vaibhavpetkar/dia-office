@@ -2,16 +2,20 @@
 // Creates .env from .env.example with a fresh ADMIN_TOKEN.
 // Optional: npm run setup -- "postgres://..."   sets the database
 //           npm run setup -- anthropic           asks for your Anthropic API key (typed hidden) and turns Claude on
+//           npm run setup -- ollama [small|medium|large]   free local AI; picks models that fit your PC's memory
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createInterface } from "node:readline";
+import { PRESETS, presetFor, ENV_KEYS } from "./ollama-models.js";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const envPath = root + ".env";
 const args = process.argv.slice(2);
 const useAnthropic = args.includes("anthropic");
-const dbUrl = args.find(a => a !== "anthropic");
+const useOllama = args.includes("ollama");
+const size = args.find(a => a in PRESETS);
+const dbUrl = args.find(a => a !== "anthropic" && a !== "ollama" && !(a in PRESETS));
 
 // Reads a line without showing it, so the key never appears on screen or in shell history.
 function askHidden(question) {
@@ -28,10 +32,10 @@ const setVar = (env, key, value) => new RegExp(`^${key}=.*$`, "m").test(env)
   ? env.replace(new RegExp(`^${key}=.*$`, "m"), () => `${key}=${value}`)
   : `${env.trimEnd()}\n${key}=${value}\n`;
 
-if (existsSync(envPath) && !dbUrl && !useAnthropic) {
+if (existsSync(envPath) && !dbUrl && !useAnthropic && !useOllama) {
   const key = readFileSync(envPath, "utf8").match(/^ADMIN_TOKEN=(.*)$/m)?.[1]?.trim();
   if (key && key !== "change-me-to-a-long-random-string") {
-    console.log(`.env already exists, so nothing was changed.\n  Director key: ${key}\nTo set the database, run: npm run setup -- "postgres://user:pass@host/db?sslmode=require"\nTo use Claude with an Anthropic API key, run: npm run setup -- anthropic`);
+    console.log(`.env already exists, so nothing was changed.\n  Director key: ${key}\nTo set the database, run: npm run setup -- "postgres://user:pass@host/db?sslmode=require"\nTo use Claude with an Anthropic API key, run: npm run setup -- anthropic\nTo use free local AI with Ollama, run: npm run setup -- ollama`);
     process.exit(0);
   }
 }
@@ -54,12 +58,20 @@ if (useAnthropic) {
   if (!/^ANTHROPIC_FAST_MODEL=/m.test(env)) env = setVar(env, "ANTHROPIC_FAST_MODEL", "claude-sonnet-5-5");
   if (!/^ANTHROPIC_SMART_MODEL=/m.test(env)) env = setVar(env, "ANTHROPIC_SMART_MODEL", "claude-opus-5-5");
 }
+let ollamaNote = "";
+if (useOllama) {
+  const name = size || presetFor(), p = PRESETS[name];
+  env = setVar(env, "LLM_PROVIDER", "ollama");
+  for (const [k, envKey] of Object.entries(ENV_KEYS)) env = setVar(env, envKey, p[k]);
+  ollamaNote = `\n  Ollama models (${name}, for ${p.label}): fast ${p.fast}, smart ${p.smart}, code ${p.code}, search ${p.embed}` +
+    `\n  Change size with: npm run setup -- ollama small | medium | large\n\nDownload the models first (one time, several GB): npm run ollama:pull`;
+}
 writeFileSync(envPath, env);
 
 const k = env.match(/^ANTHROPIC_API_KEY=(.*)$/m)?.[1]?.trim() || "";
 console.log(`Saved .env
   Director key (paste it into the office page): ${token}
   Database: ${env.match(/^DATABASE_URL=(.*)$/m)?.[1]}
-  AI: ${env.match(/^LLM_PROVIDER=(.*)$/m)?.[1]} (mock = free canned answers)${k.startsWith("sk-ant-") ? `\n  Anthropic key: saved (ending ...${k.slice(-4)})` : ""}
+  AI: ${env.match(/^LLM_PROVIDER=(.*)$/m)?.[1]} (mock = free canned answers)${k.startsWith("sk-ant-") ? `\n  Anthropic key: saved (ending ...${k.slice(-4)})` : ""}${ollamaNote}
 
 Next: npm start, then open http://localhost:${env.match(/^PORT=(.*)$/m)?.[1] || 8080}`);

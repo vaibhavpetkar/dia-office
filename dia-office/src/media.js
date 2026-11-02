@@ -1,5 +1,6 @@
-// Pictures for the teams. IMAGE_PROVIDER: mock | bedrock.
-// mock draws a simple poster (SVG) so the whole flow runs free; bedrock uses Amazon Nova Canvas.
+// Pictures for the teams. IMAGE_PROVIDER: mock | local | bedrock.
+// mock draws a simple poster (SVG) so the whole flow runs free; local uses Stable Diffusion on your own PC
+// (Forge or AUTOMATIC1111 started with --api, free); bedrock uses Amazon Nova Canvas.
 import { BedrockRuntimeClient, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import { createHmac } from "node:crypto";
 import { q, one } from "./db.js";
@@ -22,7 +23,7 @@ function mockPoster(prompt, caption) {
     `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="hsl(${hue},55%,32%)"/><stop offset="1" stop-color="hsl(${hue2},60%,22%)"/></linearGradient></defs>` +
     `<rect width="1024" height="1024" fill="url(#g)"/>${shapes}` +
     lines.slice(0, 5).map((l, i) => `<text x="512" y="${430 + i * 70}" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="56" font-weight="700" fill="#fff">${xml(l)}</text>`).join("") +
-    `<text x="512" y="960" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="rgba(255,255,255,.7)">Test image · set IMAGE_PROVIDER=bedrock for real pictures</text></svg>`;
+    `<text x="512" y="960" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="26" fill="rgba(255,255,255,.7)">Test image · set IMAGE_PROVIDER=local or bedrock for real pictures</text></svg>`;
 }
 
 export async function generateImage({ taskId, prompt, caption, agent }) {
@@ -37,12 +38,23 @@ export async function generateImage({ taskId, prompt, caption, agent }) {
     if (!j.images?.[0]) throw new Error(j.error || "Nova Canvas returned no image");
     mime = "image/png"; data = Buffer.from(j.images[0], "base64");
     cost = parseFloat(process.env.PRICE_IMAGE || "0.04");
+  } else if (P() === "local") {
+    const url = process.env.SD_URL || "http://127.0.0.1:7860";
+    const res = await fetch(`${url}/sdapi/v1/txt2img`, {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: String(prompt).slice(0, 1500), negative_prompt: "blurry, distorted text, watermark, extra fingers, low quality",
+        width: 1024, height: 1024, steps: parseInt(process.env.SD_STEPS || "25", 10), cfg_scale: 6 })
+    }).catch(e => { throw new Error(`Stable Diffusion is not answering at ${url}. Start Forge or AUTOMATIC1111 with --api. (${e.message})`); });
+    if (!res.ok) throw new Error(`Stable Diffusion error ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    const img = (await res.json()).images?.[0];
+    if (!img) throw new Error("Stable Diffusion returned no image");
+    mime = "image/png"; data = Buffer.from(img, "base64");
   } else {
     mime = "image/svg+xml"; data = Buffer.from(mockPoster(prompt, caption));
   }
   // Counted with the AI spend so the monthly budget covers pictures too.
   await q("INSERT INTO llm_usage (agent_id,model,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,0,0,$3)",
-    [agent, P() === "bedrock" ? process.env.BEDROCK_IMAGE_MODEL_ID || "amazon.nova-canvas-v1:0" : "mock-image", cost]);
+    [agent, P() === "bedrock" ? process.env.BEDROCK_IMAGE_MODEL_ID || "amazon.nova-canvas-v1:0" : P() === "local" ? "stable-diffusion" : "mock-image", cost]);
   return one("INSERT INTO media (task_id, mime, data, prompt) VALUES ($1,$2,$3,$4) RETURNING id, mime", [taskId, mime, data, prompt]);
 }
 

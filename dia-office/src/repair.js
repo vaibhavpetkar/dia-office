@@ -40,7 +40,7 @@ export async function proposeFix(problemId) {
   const excerpt = lines.slice(from, to).map((l, i) => `${String(from + i + 1).padStart(4)}| ${l}`).join("\n");
 
   const fix = await ask({
-    agent: "dia", tier: "smart", maxTokens: 1800, need: ["summary", "find"],
+    agent: "dia", tier: "code", maxTokens: 1800, need: ["summary", "find"],
     system: "You are a careful senior JavaScript engineer fixing a bug in a Node.js/Express app. " +
       "Propose the smallest change that fixes the root cause. Never remove approvals, auth checks, budget limits or validation.",
     prompt: `Error: ${p.text}: ${p.error}\nStack:\n${String(p.stack).split("\n").slice(0, 8).join("\n")}\n\n` +

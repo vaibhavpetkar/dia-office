@@ -186,7 +186,7 @@ const WORK = {
   async build(t, r, findings) {
     await status(t.agent_id, `Planning the build: ${t.title}`);
     return ask({
-      agent: t.agent_id, tier: "smart", maxTokens: 4000, need: ["stack", "steps", "starter_html"],
+      agent: t.agent_id, tier: "code", maxTokens: 4000, need: ["stack", "steps", "starter_html"],
       system: COMPANY() + " You are the solution architect. Plan the build the team will do, and write a working single-file starter page " +
         "(HTML with inline CSS and a little JavaScript, no external files, mobile-friendly, under 150 lines) the director can open right away.",
       prompt: `Request: ${r.brief}\nYour task: ${t.detail}\n${brief(findings)}\n\n` +

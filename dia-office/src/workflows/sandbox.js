@@ -71,7 +71,7 @@ async function make(p, site, prev, feedback) {
   await status("tara", feedback ? `Updating the ${p.company} site (v${site.version})` : `Building the ${p.company} website`);
   try {
     const out = await ask({
-      agent: "tara", tier: "smart", maxTokens: 12000, need: ["files", "guide"],
+      agent: "tara", tier: "code", maxTokens: 12000, need: ["files", "guide"],
       system: COMPANY() + " You are Tara, full-stack developer. You build a working, good-looking front-end website (static HTML, CSS and " +
         "vanilla JS, no build step) that the client can click through in a sandbox before the real build is deployed. " +
         "Use relative links between pages. Forms can stay as they are; the sandbox shows what they would send. " +

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { q, one, migrate, dbHint, reloadDatabaseUrl } from "./db.js";
 import { attach, log } from "./events.js";
 import { monthSpendUSD } from "./llm.js";
-import { addDoc, search, listDocs } from "./kb.js";
+import { addDoc, search, listDocs, reindex } from "./kb.js";
 import { decide } from "./workflows/approvals.js";
 import { newLead } from "./workflows/sales.js";
 import { newCandidate, getInterview, submitAnswers } from "./workflows/hiring.js";
@@ -46,6 +46,8 @@ async function connectDb({ reload = false } = {}) {
   try {
     await migrate();
     Object.assign(db, { ok: true, error: null, hint: null });
+    reindex().then(n => n && console.log(`Re-embedded ${n} knowledge-base chunk${n > 1 ? "s" : ""} for ${process.env.LLM_PROVIDER}.`))
+      .catch(e => console.error(`Knowledge base re-embed stopped: ${e.message}`));
   } catch (e) {
     Object.assign(db, { ok: false, error: e.message || String(e.code || e), hint: dbHint(e) });
     console.error(`Database not ready: ${db.error}\n  -> ${db.hint}`);
