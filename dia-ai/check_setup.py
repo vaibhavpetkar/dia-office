@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from dia.models import model_id, provider, region  # noqa: E402
+from dia.models import is_inference_profile, model_id, provider, region  # noqa: E402
 
 # Strongest first. Used to find what this account can use when the .env models fail.
 CLAUDE_CANDIDATES = [
@@ -30,26 +30,52 @@ def make_client():
         return Anthropic()
 
     import boto3
-    from anthropic import AnthropicBedrockMantle
     try:
         arn = boto3.client("sts").get_caller_identity()["Arn"]
-        print(f"[OK] AWS login works: {arn}")
+        print(f"[OK] AWS login works: {arn}  (region {region()})")
     except Exception as e:
         raise SystemExit(f"[FAIL] AWS login: {e}\n       Run 'aws configure' first.")
-    return AnthropicBedrockMantle(aws_region=region())
+    return None
 
 
 client = make_client()
+_bedrock_clients = {}
+
+
+def client_for(model: str):
+    """Anthropic API client, or the Bedrock client that serves this model ID (same one main.py uses)."""
+    if client is not None:
+        return client
+    from anthropic import AnthropicBedrock, AnthropicBedrockMantle
+    kind = "runtime" if is_inference_profile(model) else "mantle"
+    if kind not in _bedrock_clients:
+        cls = AnthropicBedrock if kind == "runtime" else AnthropicBedrockMantle
+        _bedrock_clients[kind] = cls(aws_region=region(), max_retries=0)
+    return _bedrock_clients[kind]
 
 
 def try_model(model: str) -> str | None:
     """Return None if the model answers, else a short error."""
     try:
-        client.messages.create(model=model, max_tokens=1000,
-                               messages=[{"role": "user", "content": "Reply with just: OK"}])
+        client_for(model).messages.create(model=model, max_tokens=50,
+                                          messages=[{"role": "user", "content": "Reply with just: OK"}])
         return None
     except Exception as e:
         return str(e)
+
+
+def claude_inference_profiles() -> list[str]:
+    """Claude inference profiles (au.anthropic..., global.anthropic...) this account has in AWS_REGION."""
+    import boto3
+    bedrock = boto3.client("bedrock", region_name=region())
+    ids, token = [], None
+    while True:
+        page = bedrock.list_inference_profiles(**({"nextToken": token} if token else {}))
+        ids += [p["inferenceProfileId"] for p in page.get("inferenceProfileSummaries", [])
+                if "anthropic." in p["inferenceProfileId"] and p.get("status", "ACTIVE") == "ACTIVE"]
+        token = page.get("nextToken")
+        if not token:
+            return sorted(set(ids))
 
 
 failed = False
@@ -65,11 +91,31 @@ for env_var in ("DIA_CEO_MODEL_ID", "DIA_WORKER_MODEL_ID"):
 
 if failed:
     print("\nScanning which Claude models your account can use...")
-    prefix = "anthropic." if provider() == "bedrock" else ""
-    for candidate in CLAUDE_CANDIDATES:
-        error = try_model(prefix + candidate)
-        print(f"   {'[available]    ' if error is None else '[not available]'} {prefix}{candidate}")
-    print("Put available models into .env (CEO = strongest, worker = a cheaper one), then run this again.")
+    if provider() == "bedrock":
+        try:
+            candidates = claude_inference_profiles()
+            print(f"   Found {len(candidates)} Claude inference profiles in {region()}. Testing each:")
+        except Exception as e:
+            candidates = []
+            print(f"   [WARN] Could not list inference profiles in {region()}: {str(e)[:200]}\n"
+                  "          Add bedrock:ListInferenceProfiles to your IAM policy (see README step 3b).")
+        candidates += ["anthropic." + c for c in CLAUDE_CANDIDATES]  # newer models on the Messages API endpoint
+    else:
+        candidates = CLAUDE_CANDIDATES
+    available = []
+    for candidate in candidates:
+        error = try_model(candidate)
+        if error is None:
+            available.append(candidate)
+        print(f"   {'[available]    ' if error is None else '[not available]'} {candidate}")
+    if available:
+        print("\nCopy the IDs exactly as shown into .env (CEO = strongest, worker = a cheaper one), e.g.:\n"
+              f"   DIA_CEO_MODEL_ID={next((a for a in available if 'opus' in a), available[0])}\n"
+              f"   DIA_WORKER_MODEL_ID={next((a for a in available if 'sonnet' in a), available[-1])}")
+    print("Then run this again.")
+    if provider() == "bedrock":
+        print("'AccessDenied' means your IAM policy is missing bedrock:InvokeModel / "
+              "bedrock:InvokeModelWithResponseStream (see README step 3b).")
     if provider() == "anthropic":
         print("A 401 error means the key is wrong; 'credit balance is too low' means add credits under "
               "console.anthropic.com -> Billing.")

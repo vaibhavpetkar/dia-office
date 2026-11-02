@@ -66,7 +66,9 @@ Set `DIA_PROVIDER=bedrock` in `.env`, then:
      "Version": "2012-10-17",
      "Statement": [
        {"Effect": "Allow", "Action": ["bedrock-mantle:CreateInference"], "Resource": "*"},
-       {"Effect": "Allow", "Action": ["bedrock:InvokeModel", "bedrock:ListFoundationModels"], "Resource": "*"}
+       {"Effect": "Allow", "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream",
+                                      "bedrock:ListFoundationModels", "bedrock:ListInferenceProfiles",
+                                      "bedrock:GetInferenceProfile"], "Resource": "*"}
      ]
    }
    ```
@@ -79,7 +81,17 @@ Set `DIA_PROVIDER=bedrock` in `.env`, then:
    DIA_WORKER_MODEL_ID=claude-sonnet-5-5
    ```
    Note: these newer Claude models use Bedrock's Messages API endpoint (`bedrock-mantle`), so the IDs start with
-   `anthropic.`, not `us.`. The `us.anthropic...` inference-profile IDs only work with the older Converse API.
+   `anthropic.`.
+5. **Outside us-east-1 (for example Sydney, `AWS_REGION=ap-southeast-2`)** Claude is usually reached through an
+   inference profile whose ID starts with a geography (`au.`, `us.`, `eu.`, `apac.`, `jp.`, `global.`). Paste those IDs
+   exactly as AWS shows them; they are passed through unchanged and sent to the Bedrock runtime. For example:
+   ```
+   AWS_REGION=ap-southeast-2
+   DIA_CEO_MODEL_ID=au.anthropic.claude-opus-4-6-v1
+   DIA_WORKER_MODEL_ID=au.anthropic.claude-sonnet-4-6
+   ```
+   If a model fails, `python check_setup.py` lists the Claude inference profiles in your region, tests each one and
+   prints the lines to copy into `.env`.
 
 ### 4. Test
 Activate the environment first (every new terminal):
