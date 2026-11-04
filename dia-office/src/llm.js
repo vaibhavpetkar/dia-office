@@ -1,4 +1,4 @@
-// One door to the AI. Swap providers with LLM_PROVIDER: mock | ollama | anthropic | bedrock.
+// One door to the AI. Swap providers with LLM_PROVIDER: mock | ollama | anthropic | openrouter | bedrock.
 // tier "fast" = everyday worker model (Sonnet / Haiku / small local), tier "smart" = strongest model for big decisions.
 import { BedrockRuntimeClient, ConverseCommand, InvokeModelCommand } from "@aws-sdk/client-bedrock-runtime";
 import Anthropic from "@anthropic-ai/sdk";
@@ -10,7 +10,21 @@ const br = () => (bedrock ??= new BedrockRuntimeClient({ region: process.env.AWS
 let anthropic;
 const an = () => (anthropic ??= new Anthropic()); // reads ANTHROPIC_API_KEY
 
-const modelFor = tier => {
+// OpenRouter: one key (openrouter.ai/keys) for Claude, GPT, Gemini, Llama and more, through an OpenAI-style chat API.
+export const OPENROUTER_URL = (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
+export const OPENROUTER_DEFAULTS = { fast: "anthropic/claude-sonnet-5.5", smart: "anthropic/claude-opus-5.5" };
+// Each person on the team can have their own model, e.g. OPENROUTER_MODEL_TARA=qwen/qwen3-coder:free for websites.
+// Otherwise they use the fast or smart model. `npm run openrouter:models` suggests the best free model per role.
+export function openRouterModel(tier, agent) {
+  const own = agent && process.env[`OPENROUTER_MODEL_${String(agent).toUpperCase()}`];
+  if (own?.trim()) return own.trim();
+  return (tier === "smart" ? process.env.OPENROUTER_SMART_MODEL || OPENROUTER_DEFAULTS.smart : process.env.OPENROUTER_FAST_MODEL || OPENROUTER_DEFAULTS.fast).trim();
+}
+// Models OpenRouter tries next when the first is busy or out of free requests (comma separated, at most 2).
+const openRouterFallbacks = () => (process.env.OPENROUTER_FALLBACK_MODELS || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 2);
+
+const modelFor = (tier, agent) => {
+  if (P() === "openrouter") return openRouterModel(tier, agent);
   if (P() === "bedrock") return tier === "smart" ? process.env.BEDROCK_SMART_MODEL_ID : process.env.BEDROCK_FAST_MODEL_ID;
   if (P() === "anthropic") return tier === "smart" ? process.env.ANTHROPIC_SMART_MODEL || "claude-opus-5-5" : process.env.ANTHROPIC_FAST_MODEL || "claude-sonnet-5-5";
   if (P() === "ollama") return tier === "smart" ? process.env.OLLAMA_SMART_MODEL : process.env.OLLAMA_FAST_MODEL;
@@ -50,7 +64,7 @@ export async function ask({ agent, tier = "fast", system, prompt, mock, maxToken
   if (P() !== "mock" && budget > 0 && (await monthSpendUSD()) >= budget)
     throw new Error(`Monthly AI budget of $${budget} reached. Raise MONTHLY_AI_BUDGET_USD to continue.`);
 
-  const model = modelFor(tier);
+  const model = modelFor(tier, agent);
   const sys = system + "\nReply with ONE JSON object only, no markdown, no extra text.";
   const check = text => {
     const j = parseJSON(text);
@@ -67,7 +81,7 @@ export async function ask({ agent, tier = "fast", system, prompt, mock, maxToken
 }
 
 async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
-  let text, inTok = 0, outTok = 0;
+  let text, inTok = 0, outTok = 0, reportedCost = null;
   if (P() === "mock") {
     await new Promise(r => setTimeout(r, process.env.MOCK_DELAY_MS ? Number(process.env.MOCK_DELAY_MS) : 900));
     text = JSON.stringify(mock ? mock() : {});
@@ -98,6 +112,35 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
     const u = res.usage || {};
     inTok = (u.input_tokens || 0) + (u.cache_creation_input_tokens || 0) + (u.cache_read_input_tokens || 0);
     outTok = u.output_tokens || 0;
+  } else if (P() === "openrouter") {
+    const res = await fetch(`${OPENROUTER_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${(process.env.OPENROUTER_API_KEY || "").trim()}`,
+        "HTTP-Referer": process.env.PUBLIC_URL || "http://localhost:8080", // shows the app on your OpenRouter activity page
+        "X-Title": "Dia Office"
+      },
+      body: JSON.stringify({
+        model, max_tokens: maxTokens, temperature: 0.3,
+        ...(openRouterFallbacks().length ? { models: [model, ...openRouterFallbacks().filter(m => m !== model)] } : {}),
+        messages: [{ role: "system", content: sys }, { role: "user", content: prompt }],
+        response_format: { type: "json_object" }, // models that can't force JSON ignore this; the retry above still covers them
+        usage: { include: true } // ask OpenRouter to report the real cost of each call
+      })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j.error) {
+      const msg = j.error?.message || `HTTP ${res.status}`;
+      if (res.status === 401) throw new Error(`OpenRouter rejected the key (${msg}). Check OPENROUTER_API_KEY in .env.`);
+      if (res.status === 429) throw new Error(`OpenRouter says ${model} is busy or its free requests for today are used up (${msg}). Set OPENROUTER_FALLBACK_MODELS, or add $10 of credits to raise the free limit.`);
+      if (res.status === 402) throw new Error(`OpenRouter credits are used up (${msg}). Add credits at openrouter.ai/settings/credits.`);
+      throw new Error(`OpenRouter error ${res.status} for model ${model}: ${msg}`);
+    }
+    text = j.choices?.[0]?.message?.content || "";
+    if (j.model) model = j.model; // the model that actually answered (a fallback, if the first was busy)
+    inTok = j.usage?.prompt_tokens || 0; outTok = j.usage?.completion_tokens || 0;
+    if (typeof j.usage?.cost === "number") reportedCost = j.usage.cost;
   } else {
     const system = [{ text: sys }];
     if (process.env.BEDROCK_PROMPT_CACHE === "true") system.push({ cachePoint: { type: "default" } });
@@ -112,7 +155,7 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
 
   const pin = parseFloat(process.env[tier === "smart" ? "PRICE_SMART_IN" : "PRICE_FAST_IN"] || "0");
   const pout = parseFloat(process.env[tier === "smart" ? "PRICE_SMART_OUT" : "PRICE_FAST_OUT"] || "0");
-  const cost = P() === "bedrock" || P() === "anthropic" ? (inTok * pin + outTok * pout) / 1e6 : 0;
+  const cost = reportedCost ?? (["bedrock", "anthropic", "openrouter"].includes(P()) ? (inTok * pin + outTok * pout) / 1e6 : 0);
   await q("INSERT INTO llm_usage (agent_id,model,input_tokens,output_tokens,cost_usd) VALUES ($1,$2,$3,$4,$5)",
     [agent, model, inTok, outTok, cost]);
   return text;
@@ -121,9 +164,9 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
 // Embeddings for the company knowledge base.
 export async function embed(text) {
   const dim = parseInt(process.env.EMBED_DIM || "768", 10);
-  if (P() === "mock" || P() === "anthropic") {
+  if (P() === "mock" || P() === "anthropic" || P() === "openrouter") {
     // Cheap hashed bag-of-words vector so search still roughly works without any AI
-    // (the Anthropic API has no embeddings model, so it uses this too).
+    // (the Anthropic API has no embeddings model, so it uses this too; so does OpenRouter, to keep one setup).
     const v = new Array(dim).fill(0);
     for (const w of text.toLowerCase().match(/[a-z0-9]+/g) || []) {
       let h = 0; for (const ch of w) h = (h * 31 + ch.charCodeAt(0)) >>> 0;

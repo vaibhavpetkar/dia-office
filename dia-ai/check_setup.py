@@ -1,6 +1,7 @@
 """Check that the AI is ready: python check_setup.py
 
-DIA_PROVIDER=anthropic checks your Anthropic API key; DIA_PROVIDER=bedrock checks AWS + Bedrock.
+DIA_PROVIDER=anthropic checks your Anthropic API key; DIA_PROVIDER=bedrock checks AWS + Bedrock;
+DIA_PROVIDER=openrouter checks your OpenRouter key and lists the free models.
 """
 import os
 
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from dia.models import is_inference_profile, model_id, provider, region  # noqa: E402
+from dia.models import OPENROUTER_URL, is_inference_profile, model_id, provider, region  # noqa: E402
 
 # Strongest first. Used to find what this account can use when the .env models fail.
 CLAUDE_CANDIDATES = [
@@ -18,6 +19,16 @@ CLAUDE_CANDIDATES = [
 
 
 def make_client():
+    if provider() == "openrouter":
+        key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+        if not key:
+            raise SystemExit("[FAIL] OPENROUTER_API_KEY is empty in .env.\n"
+                             "       Create a key at https://openrouter.ai/keys and paste it into .env.")
+        if not key.startswith("sk-or-"):
+            print("[WARN] OPENROUTER_API_KEY does not start with sk-or- . Check you copied the whole key.")
+        from openai import OpenAI
+        print(f"[OK] Using OpenRouter (key ending ...{key[-4:]})")
+        return OpenAI(api_key=key, base_url=OPENROUTER_URL, max_retries=0)
     if provider() == "anthropic":
         key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
         if not key or key.startswith("paste-"):
@@ -57,11 +68,26 @@ def client_for(model: str):
 def try_model(model: str) -> str | None:
     """Return None if the model answers, else a short error."""
     try:
+        if provider() == "openrouter":
+            client.chat.completions.create(model=model, max_tokens=50,
+                                           messages=[{"role": "user", "content": "Reply with just: OK"}])
+            return None
         client_for(model).messages.create(model=model, max_tokens=50,
                                           messages=[{"role": "user", "content": "Reply with just: OK"}])
         return None
     except Exception as e:
         return str(e)
+
+
+def openrouter_free_models() -> list[str]:
+    """Free text models on OpenRouter today, biggest context first."""
+    import json
+    import urllib.request
+    with urllib.request.urlopen(f"{OPENROUTER_URL}/models", timeout=20) as r:
+        data = json.loads(r.read())["data"]
+    free = [m for m in data if float(m["pricing"]["prompt"]) == 0 and float(m["pricing"]["completion"]) == 0
+            and "text" in m.get("architecture", {}).get("output_modalities", ["text"])]
+    return [m["id"] for m in sorted(free, key=lambda m: -(m.get("context_length") or 0))]
 
 
 def claude_inference_profiles() -> list[str]:
@@ -89,7 +115,20 @@ for env_var in ("DIA_CEO_MODEL_ID", "DIA_WORKER_MODEL_ID"):
     print(f"[OK] {env_var} ({model})" if error is None else f"[FAIL] {env_var} ({model}): {error[:300]}")
     failed |= error is not None
 
-if failed:
+if provider() == "openrouter":
+    try:
+        free = openrouter_free_models()
+        print(f"\n[INFO] {len(free)} free models on OpenRouter today (about 50 requests a day in total, "
+              "1,000 with $10 of credits). Some good ones:")
+        for m in free[:12]:
+            print(f"   {m}")
+    except Exception as e:
+        print(f"[WARN] Could not read OpenRouter's model list: {str(e)[:200]}")
+    if failed:
+        print("\nCopy model IDs exactly from openrouter.ai/models into .env, then run this again.\n"
+              "A 401 error means the key is wrong; 402 means add credits; 429 means the model is busy or the "
+              "free requests for today are used up (set OPENROUTER_FALLBACK_MODELS).")
+elif failed:
     print("\nScanning which Claude models your account can use...")
     if provider() == "bedrock":
         try:
@@ -120,9 +159,15 @@ if failed:
         print("A 401 error means the key is wrong; 'credit balance is too low' means add credits under "
               "console.anthropic.com -> Billing.")
 
-if os.environ.get("DIA_IMAGE_PROVIDER", "off").strip().lower() != "bedrock":
+image_provider = os.environ.get("DIA_IMAGE_PROVIDER", "off").strip().lower()
+if image_provider == "openrouter":
+    if not os.environ.get("OPENROUTER_API_KEY", "").strip():
+        print("[FAIL] DIA_IMAGE_PROVIDER=openrouter needs OPENROUTER_API_KEY in .env.")
+    else:
+        print(f"[OK] Pictures through OpenRouter ({os.environ.get('DIA_IMAGE_MODEL_ID') or 'google/gemini-2.5-flash-image'})")
+elif image_provider != "bedrock":
     print("[INFO] Image generation is off. The Creative team writes image briefs instead of pictures.\n"
-          "       (The Anthropic API has no image model. Set DIA_IMAGE_PROVIDER=bedrock once Bedrock works.)")
+          "       (Set DIA_IMAGE_PROVIDER=openrouter for Nano Banana, or bedrock for Amazon Nova Canvas.)")
 else:
     import boto3
     image_model = os.environ.get("DIA_IMAGE_MODEL_ID", "amazon.nova-canvas-v1:0")

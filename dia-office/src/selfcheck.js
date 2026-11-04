@@ -1,7 +1,8 @@
 // Dia's self-check: finds work that stopped half-way (a crash, a restart, an AI timeout) and restarts it.
 // Only safe repairs happen here; nothing in this file changes code or makes a business decision.
 import { q } from "./db.js";
-import { monthSpendUSD } from "./llm.js";
+import { monthSpendUSD, OPENROUTER_URL, OPENROUTER_DEFAULTS } from "./llm.js";
+import { OPENROUTER_IMAGE_DEFAULT } from "./media.js";
 import { log, status, problems, problem } from "./events.js";
 import { run as runLead } from "./workflows/sales.js";
 import { prepare, evaluate } from "./workflows/hiring.js";
@@ -41,6 +42,32 @@ async function stuckWork() {
   ];
 }
 
+// Checks the OpenRouter model names in .env against OpenRouter's public model list.
+async function openRouterModelFindings() {
+  let ids;
+  try {
+    const r = await fetch(`${OPENROUTER_URL}/models`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) throw new Error(r.status);
+    ids = new Set((await r.json()).data.map(m => m.id));
+  } catch { return [{ level: "warn", text: "Could not reach openrouter.ai to check the model names." }]; }
+  const out = [];
+  const wanted = [];
+  if ((process.env.LLM_PROVIDER || "mock") === "openrouter") {
+    wanted.push(["OPENROUTER_FAST_MODEL", OPENROUTER_DEFAULTS.fast], ["OPENROUTER_SMART_MODEL", OPENROUTER_DEFAULTS.smart]);
+    for (const k of Object.keys(process.env)) if (k.startsWith("OPENROUTER_MODEL_") && process.env[k].trim()) wanted.push([k, ""]);
+    for (const m of (process.env.OPENROUTER_FALLBACK_MODELS || "").split(",").map(s => s.trim()).filter(Boolean)) wanted.push(["OPENROUTER_FALLBACK_MODELS", m]);
+  }
+  if (process.env.IMAGE_PROVIDER === "openrouter") wanted.push(["OPENROUTER_IMAGE_MODEL", OPENROUTER_IMAGE_DEFAULT]);
+  for (const [env, fallback] of wanted) {
+    const id = (env === "OPENROUTER_FALLBACK_MODELS" ? fallback : process.env[env] || fallback).trim();
+    if (!ids.has(id)) {
+      const close = [...ids].filter(i => i.startsWith(id.split("/")[0] + "/")).slice(0, 6).join(", ");
+      out.push({ level: "bad", text: `${env}=${id} is not a model on OpenRouter.${close ? ` Some that are: ${close}` : ""} (full list: openrouter.ai/models)` });
+    }
+  }
+  return out;
+}
+
 /**
  * Returns a report Dia can read out. With repair=true she also restarts stuck work.
  * getHealth is passed in by the server so this file doesn't need to know how the database connects.
@@ -59,6 +86,11 @@ export async function selfCheck({ repair = true, getHealth } = {}) {
   }
   if (provider === "anthropic" && !/^sk-ant-/.test((process.env.ANTHROPIC_API_KEY || "").trim()))
     findings.push({ level: "bad", text: "ANTHROPIC_API_KEY is missing in .env. Run npm run setup -- anthropic and paste your key when asked." });
+  if (provider === "openrouter" || process.env.IMAGE_PROVIDER === "openrouter") {
+    if (!/^sk-or-/.test((process.env.OPENROUTER_API_KEY || "").trim()))
+      findings.push({ level: "bad", text: "OPENROUTER_API_KEY is missing in .env. Run npm run setup -- openrouter and paste your key when asked." });
+    else findings.push(...await openRouterModelFindings());
+  }
   if (provider === "bedrock" && /^(paste-|$)/.test(process.env.BEDROCK_FAST_MODEL_ID || ""))
     findings.push({ level: "bad", text: "BEDROCK_FAST_MODEL_ID is not set in .env. Copy the Haiku inference profile ID from the Bedrock console." });
   const budget = parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0");

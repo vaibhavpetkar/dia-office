@@ -42,8 +42,22 @@ fake_bedrock = mock.MagicMock()
 fake_bedrock.invoke_model.return_value = {"body": io.BytesIO(json.dumps({"images": [fake_png]}).encode())}
 with mock.patch("boto3.client", return_value=fake_bedrock):
     check("Creative: image saved (fake model)", "Saved images" in generate_image(prompt="red shoe"))
+os.environ["DIA_IMAGE_PROVIDER"] = "openrouter"
+fake_reply = mock.MagicMock()
+fake_reply.__enter__.return_value.read.return_value = json.dumps({"choices": [{"message": {"images": [
+    {"image_url": {"url": "data:image/png;base64," + fake_png}}]}}]}).encode()
+with mock.patch("urllib.request.urlopen", return_value=fake_reply):
+    check("Creative: OpenRouter image saved (fake model)", "Saved images" in generate_image(prompt="red shoe"))
 os.environ["DIA_IMAGE_PROVIDER"] = "off"
 check("Creative: images off gives a brief", "Image brief" in generate_image(prompt="red shoe"))
+
+from dia import models  # noqa: E402
+with mock.patch.dict(os.environ, {"DIA_PROVIDER": "openrouter", "OPENROUTER_API_KEY": "sk-or-test",
+                                  "DIA_CEO_MODEL_ID": "deepseek/deepseek-chat-v3-0324:free",
+                                  "OPENROUTER_FALLBACK_MODELS": "qwen/qwen3-coder:free"}):
+    m = models.ceo_model()
+    check("OpenRouter: CEO model set up", m.config["model_id"] == "deepseek/deepseek-chat-v3-0324:free"
+          and m.config["params"]["extra_body"]["models"][1] == "qwen/qwen3-coder:free")
 
 print("\nAll good! Next: fill .env, run check_setup.py, then main.py" if not failures
       else f"\n{failures} check(s) failed - send this output to Claude.")

@@ -9,6 +9,7 @@
     "dev": "node --watch src/server.js",
     "migrate": "node src/migrate.js",
     "setup": "node scripts/setup.js",
+    "openrouter:models": "node scripts/openrouter-models.js",
     "test": "node --test --test-concurrency=1"
   },
   "engines": {

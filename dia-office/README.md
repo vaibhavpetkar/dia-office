@@ -59,6 +59,18 @@ Set `LLM_PROVIDER=ollama` and `EMBED_DIM=768`.
 
 The Anthropic API has no image or embeddings model, so keep `IMAGE_PROVIDER=mock` (test posters) until Bedrock works, and knowledge search uses a free built-in word match.
 
+### OpenRouter: one key for Claude, GPT, Gemini, DeepSeek and free models
+1. Create a key at https://openrouter.ai/keys. Free models need no credit; adding $10 once raises the free limit from about 50 to about 1,000 requests a day, and pays for paid models and pictures.
+2. In this folder run `npm run setup -- openrouter` and paste the key when asked (it stays hidden). Never paste the key into a chat.
+3. Run `npm run openrouter:models -- --save`. It reads OpenRouter's live list and gives each team member the best **free** model for their job (coding models for Tara, Neel, Om, Sneha and Aditya; writing models for marketing, sales, support, HR and billing; a reasoning model for Dia's big decisions), plus two backups for when a model is busy.
+4. Restart with `npm start`. The self-check on the office page warns if a model name in `.env` isn't on OpenRouter.
+
+You can set any model by hand: `OPENROUTER_FAST_MODEL`, `OPENROUTER_SMART_MODEL`, or one person with `OPENROUTER_MODEL_<ID>` (for example `OPENROUTER_MODEL_TARA=qwen/qwen3-coder:free`). The AI-spend counter uses the real cost OpenRouter reports, so free models count as $0.
+
+**Pictures with Nano Banana:** set `IMAGE_PROVIDER=openrouter` (works with any `LLM_PROVIDER`, needs `OPENROUTER_API_KEY`). The default `OPENROUTER_IMAGE_MODEL=google/gemini-2.5-flash-image` is paid, about $0.04 a picture, and counted in the AI budget. `npm run openrouter:models` lists the other image models.
+
+OpenRouter has no voice-calling or video models; Dia's voice stays on Azure Speech / the browser, and videos on D-ID. Knowledge search uses the free built-in word match, as with the Anthropic API.
+
 ### Claude on Amazon Bedrock
 1. Bedrock access approved (use-case form submitted as root/admin).
 2. In `.env`: `LLM_PROVIDER=bedrock`, `AWS_REGION`, keys, and the **inference profile IDs** for Haiku (`BEDROCK_FAST_MODEL_ID`) and Sonnet (`BEDROCK_SMART_MODEL_ID`) copied from the Bedrock model catalog.
