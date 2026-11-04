@@ -393,3 +393,37 @@ test("app keys: made by the director, work on the app API only, and can be switc
   assert.equal((await call(`/api/v1/keys/${k.id}`, { method: "DELETE" })).status, 200);
   assert.equal((await call("/api/v1/me", { key: k.key })).status, 401);
 });
+
+test("a person's profile: public basics for everyone, tasks and full history for the director; meetings go in it", async () => {
+  const pub = (await call("/api/agents/tara", { key: null })).body;
+  assert.equal(pub.director, false);
+  assert.equal(pub.agent.name, "Tara");
+  assert.equal(pub.agent.monthly_cost, undefined, "pay stays private");
+  assert.equal(pub.history, undefined, "history stays private");
+  assert.equal((await call("/api/agents/nobody")).status, 404);
+
+  assert.equal((await call("/api/meetings", { method: "POST", key: null, body: { title: "Sprint", people: ["neel", "tara"] } })).status, 401);
+  assert.equal((await call("/api/meetings", { method: "POST", body: { title: "Alone", people: ["neel"] } })).status, 400);
+  assert.equal((await call("/api/meetings", { method: "POST", body: { title: "Sprint", people: ["neel", "ghost"] } })).status, 400, "unknown people don't count");
+  const m = await call("/api/meetings", { method: "POST", body: { title: "Sprint planning", people: ["neel", "tara", "om"] } });
+  assert.equal(m.status, 202);
+  assert.deepEqual(m.body.people, ["neel", "tara", "om"]);
+
+  const p = (await call("/api/agents/tara")).body;
+  assert.equal(p.director, true);
+  assert.ok(Array.isArray(p.tasks) && Array.isArray(p.planned) && Array.isArray(p.handoffs));
+  const met = p.history.find(h => h.data?.meeting?.title === "Sprint planning");
+  assert.ok(met, "the meeting Neel called is in Tara's history");
+  assert.match(met.text, /Tara, Om/);
+});
+
+test("planning a project starts with a team meeting, and hand-overs show in both people's profiles", async () => {
+  const company = hotLead("A meeting booking app", "Meet Co");
+  await call("/api/leads", { method: "POST", body: { company, need: "A meeting booking app", budget: 600000, source: "CRM" } });
+  const ap = await waitFor(async () => row("SELECT id FROM approvals WHERE kind='project' AND title LIKE $1 AND status='pending'", [`%${company}%`]), "project approval");
+  await call(`/api/approvals/${ap.id}`, { method: "POST", body: { decision: "approve" } });
+  const tara = await waitFor(async () => { const b = (await call("/api/agents/tara")).body; return b.history.some(h => h.data?.meeting?.title?.includes(company)) && b.handoffs.some(h => h.from === "neel") && b; }, "planning meeting and hand-over");
+  assert.ok(tara.planned.some(t => t.company === company), "Neel's plan gives Tara build tasks");
+  const neel = (await call("/api/agents/neel")).body;
+  assert.ok(neel.handoffs.some(h => h.to === "tara" && h.label === "Tasks"));
+});

@@ -5,7 +5,7 @@ import { q, one } from "../db.js";
 import { ask } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh, problem } from "../events.js";
+import { status, idle, log, handoff, refresh, problem, meeting } from "../events.js";
 import { generateImage, mediaUrl } from "../media.js";
 
 const err = (status, message) => Object.assign(new Error(message), { status });
@@ -71,6 +71,10 @@ async function plan(r) {
   }
   await q("UPDATE requests SET title=$2, summary=$3, questions=$4, status='working' WHERE id=$1",
     [r.id, String(out.title || "New request").slice(0, 120), String(out.summary || "").slice(0, 1000), JSON.stringify((out.questions || []).slice(0, 3).map(String))]);
+  // Everyone with a task meets once to agree who does what before they start.
+  const team = [];
+  for (const t of (await q("SELECT agent_id FROM tasks WHERE request_id=$1 ORDER BY seq", [r.id])).rows) if (!team.includes(t.agent_id)) team.push(t.agent_id);
+  if (team.length > 1) await meeting(`Kick-off · ${String(out.title || "request #" + r.id).slice(0, 60)}`, team, { by: team[0] }).catch(e => problem("could not call the kick-off meeting", e));
   await log("dia", `split request #${r.id} into ${tasks.length} task${tasks.length > 1 ? "s" : ""}: ${tasks.map(t => KINDS[t.kind].label).join(", ")}.`, { request_id: r.id });
   await idle("dia");
 }

@@ -5,7 +5,7 @@ import { q, one } from "../db.js";
 import { ask } from "../llm.js";
 import { context } from "../kb.js";
 import { COMPANY } from "../agents.js";
-import { status, idle, log, handoff, refresh, problem } from "../events.js";
+import { status, idle, log, handoff, refresh, problem, meeting } from "../events.js";
 import { draftInvoice } from "./finance.js";
 import { buildSite } from "./sandbox.js";
 import { startTesting } from "./testing.js";
@@ -15,6 +15,8 @@ export const STAGES = ["Won", "Work order", "Planning", "Building", "Testing", "
 export async function startEngineering(projectId) {
   const p = await one("SELECT * FROM projects WHERE id=$1", [projectId]);
   await q("UPDATE projects SET stage='Planning' WHERE id=$1", [p.id]); refresh("projects");
+  // Neel calls the build team (and QA and the sales manager who won it) to the meeting room to plan it together.
+  await meeting(`Planning ${p.wo} · ${p.company}`, ["neel", "tara", "om", "sneha", "sameer"], { by: "neel" }).catch(e => problem("could not call the planning meeting", e));
   await status("neel", `Planning ${p.wo}…`);
   const kb = await context(p.need);
   const plan = await ask({

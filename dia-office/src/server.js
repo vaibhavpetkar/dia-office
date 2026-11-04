@@ -5,7 +5,7 @@ import { WebSocketServer } from "ws";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { q, one, migrate, dbHint, reloadDatabaseUrl } from "./db.js";
-import { attach, log } from "./events.js";
+import { attach, log, meeting, handoffs } from "./events.js";
 import { monthSpendUSD } from "./llm.js";
 import { addDoc, search, listDocs } from "./kb.js";
 import { decide } from "./workflows/approvals.js";
@@ -145,6 +145,36 @@ app.get("/api/state", wrap(async (req, res) => {
 }));
 
 app.get("/api/auth/check", admin, (_req, res) => res.json({ ok: true }));
+
+// ---- People ----
+// One person's profile: who they are and what they're doing (anyone), plus their tasks, projects,
+// hand-overs and full history (director only, like the activity feed).
+app.get("/api/agents/:id", wrap(async (req, res) => {
+  const director = isDirector(req);
+  const a = await one("SELECT id,name,role,dept,kind,monthly_cost,look,status,tasks_done,created_at FROM agents WHERE id=$1", [req.params.id]);
+  if (!a) return res.status(404).json({ error: "Nobody with that id works here." });
+  if (!director) { delete a.monthly_cost; return res.json({ director, agent: a }); }
+  const [history, tasks, projects] = await Promise.all([
+    q(`SELECT id, agent_id, text, data, created_at FROM activity
+       WHERE agent_id=$1 OR data->'meeting'->'people' ? $1 ORDER BY created_at DESC LIMIT 300`, [a.id]),
+    q(`SELECT t.id, t.request_id, t.kind, t.title, t.status, t.error, t.created_at, t.done_at, r.title AS request
+       FROM tasks t JOIN requests r ON r.id=t.request_id WHERE t.agent_id=$1 ORDER BY t.created_at DESC LIMIT 100`, [a.id]),
+    q("SELECT id, company, wo, stage, plan FROM projects WHERE stage NOT IN ('Live','Promoted') AND plan IS NOT NULL ORDER BY created_at DESC LIMIT 50")
+  ]);
+  // Build tasks from Neel's plans that are this person's, on projects still in progress.
+  const planned = projects.rows.flatMap(p => (p.plan?.tasks || []).filter(t => t.owner === a.id)
+    .map(t => ({ project_id: p.id, company: p.company, wo: p.wo, stage: p.stage, title: t.title, days: t.days })));
+  res.json({ director, agent: a, history: history.rows, tasks: tasks.rows, planned,
+    handoffs: handoffs.filter(h => h.from === a.id || h.to === a.id).slice(0, 100) });
+}));
+// Call people to the meeting room, e.g. {"title":"Sprint planning","people":["neel","tara","om"]}.
+app.post("/api/meetings", admin, wrap(async (req, res) => {
+  need(req.body, ["title", "people"]);
+  const people = Array.isArray(req.body.people) ? req.body.people.map(String).slice(0, 8) : [];
+  const ids = await meeting(String(req.body.title).slice(0, 80), people, { by: people[0] });
+  if (!ids) return res.status(400).json({ error: "A meeting needs at least two people who work here." });
+  res.status(202).json({ ok: true, people: ids });
+}));
 
 // ---- Sales ----
 app.post("/api/leads", admin, wrap(async (req, res) => {
