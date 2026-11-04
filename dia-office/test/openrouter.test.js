@@ -71,6 +71,17 @@ test("a team member can have their own model", async () => {
   assert.equal(seen.at(-1).model, "qwen/qwen3-coder:free");
 });
 
+test("people hired into a department use that department's model", async () => {
+  await dbm.q("INSERT INTO agents (id,name,role,dept,kind,monthly_cost,look) VALUES ('rhea','Rhea','UI Tester','qa','ai',0,'{}') ON CONFLICT (id) DO NOTHING");
+  process.env.OPENROUTER_MODEL_DEPT_QA = "qwen/qwen3-coder:free";
+  try {
+    await llm.ask({ agent: "rhea", tier: "fast", system: "s", prompt: "p" });
+    assert.equal(seen.at(-1).model, "qwen/qwen3-coder:free");
+    await llm.ask({ agent: "dia", tier: "fast", system: "s", prompt: "p" });
+    assert.equal(seen.at(-1).model, "openai/gpt-oss-120b", "Dia keeps the fast/smart models");
+  } finally { delete process.env.OPENROUTER_MODEL_DEPT_QA; }
+});
+
 test("backups are sent, and the model that answered is recorded", async () => {
   process.env.OPENROUTER_FALLBACK_MODELS = "meta-llama/llama-3.3-70b-instruct:free, google/gemma-3-27b-it:free, x/y";
   try {

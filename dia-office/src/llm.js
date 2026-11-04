@@ -13,18 +13,28 @@ const an = () => (anthropic ??= new Anthropic()); // reads ANTHROPIC_API_KEY
 // OpenRouter: one key (openrouter.ai/keys) for Claude, GPT, Gemini, Llama and more, through an OpenAI-style chat API.
 export const OPENROUTER_URL = (process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1").replace(/\/$/, "");
 export const OPENROUTER_DEFAULTS = { fast: "anthropic/claude-sonnet-5.5", smart: "anthropic/claude-opus-5.5" };
-// Each person on the team can have their own model, e.g. OPENROUTER_MODEL_TARA=qwen/qwen3-coder:free for websites.
+// Each person on the team can have their own model, e.g. OPENROUTER_MODEL_TARA=qwen/qwen3-coder:free for websites,
+// and each department too (OPENROUTER_MODEL_DEPT_QA), so people hired later get the right one automatically.
 // Otherwise they use the fast or smart model. `npm run openrouter:models` suggests the best free model per role.
-export function openRouterModel(tier, agent) {
+export function openRouterModel(tier, agent, dept) {
   const own = agent && process.env[`OPENROUTER_MODEL_${String(agent).toUpperCase()}`];
   if (own?.trim()) return own.trim();
+  const team = agent === "dia" || !dept ? "" : process.env[`OPENROUTER_MODEL_DEPT_${String(dept).toUpperCase()}`];
+  if (team?.trim()) return team.trim();
   return (tier === "smart" ? process.env.OPENROUTER_SMART_MODEL || OPENROUTER_DEFAULTS.smart : process.env.OPENROUTER_FAST_MODEL || OPENROUTER_DEFAULTS.fast).trim();
 }
 // Models OpenRouter tries next when the first is busy or out of free requests (comma separated, at most 2).
 const openRouterFallbacks = () => (process.env.OPENROUTER_FALLBACK_MODELS || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 2);
 
-const modelFor = (tier, agent) => {
-  if (P() === "openrouter") return openRouterModel(tier, agent);
+const depts = new Map();
+const deptOf = async agent => {
+  if (!agent) return null;
+  if (!depts.has(agent)) depts.set(agent, (await one("SELECT dept FROM agents WHERE id=$1", [agent]).catch(() => null))?.dept || null);
+  return depts.get(agent);
+};
+
+const modelFor = async (tier, agent) => {
+  if (P() === "openrouter") return openRouterModel(tier, agent, await deptOf(agent));
   if (P() === "bedrock") return tier === "smart" ? process.env.BEDROCK_SMART_MODEL_ID : process.env.BEDROCK_FAST_MODEL_ID;
   if (P() === "anthropic") return tier === "smart" ? process.env.ANTHROPIC_SMART_MODEL || "claude-opus-5-5" : process.env.ANTHROPIC_FAST_MODEL || "claude-sonnet-5-5";
   if (P() === "ollama") return tier === "smart" ? process.env.OLLAMA_SMART_MODEL : process.env.OLLAMA_FAST_MODEL;
@@ -64,7 +74,7 @@ export async function ask({ agent, tier = "fast", system, prompt, mock, maxToken
   if (P() !== "mock" && budget > 0 && (await monthSpendUSD()) >= budget)
     throw new Error(`Monthly AI budget of $${budget} reached. Raise MONTHLY_AI_BUDGET_USD to continue.`);
 
-  const model = modelFor(tier, agent);
+  const model = await modelFor(tier, agent);
   const sys = system + "\nReply with ONE JSON object only, no markdown, no extra text.";
   const check = text => {
     const j = parseJSON(text);

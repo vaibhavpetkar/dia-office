@@ -14,6 +14,11 @@ const KIND = {
   code: ["tara", "neel", "om", "sneha", "aditya"], // websites, plans, deploys, tests, UI checks
   writing: ["pooja", "isha", "meera", "sameer", "kavya", "asha", "vikram", "arjun"] // marketing, content, sales, support, HR, billing
 };
+// Departments, so people hired into them later get the right model too.
+const DEPT_KIND = {
+  code: ["eng", "qa", "design", "mobile", "cloud", "security", "data", "rnd"],
+  writing: ["hr", "sales", "mkt", "support", "fin", "product", "success", "content", "events", "partners", "legal", "ops", "admin", "training"]
+};
 // Model families to prefer for each kind, best first. A model matches if its id contains the text.
 // The list only orders what OpenRouter offers free right now; models that aren't free are never picked.
 const PREFER = {
@@ -39,6 +44,7 @@ function best(kind) {
 if (!free.length) { console.log("OpenRouter has no free text models right now. Use paid ones (see openrouter.ai/models)."); process.exit(1); }
 const picks = { OPENROUTER_SMART_MODEL: best("smart"), OPENROUTER_FAST_MODEL: best("fast") };
 for (const kind of ["code", "writing"]) for (const id of KIND[kind]) picks[`OPENROUTER_MODEL_${id.toUpperCase()}`] = best(kind);
+for (const kind of ["code", "writing"]) for (const d of DEPT_KIND[kind]) picks[`OPENROUTER_MODEL_DEPT_${d.toUpperCase()}`] = best(kind);
 // If the first choice is busy or out of free requests, OpenRouter tries these.
 const backups = [...new Set(Object.values(picks).map(m => m.id))].slice(0, 3);
 const fallback = free.filter(m => !backups.includes(m.id)).sort((a, b) => (b.context_length || 0) - (a.context_length || 0)).slice(0, 2).map(m => m.id);
@@ -47,7 +53,8 @@ const who = id => AGENTS.find(a => a.id === id);
 console.log(`${free.length} free text models on OpenRouter today. Best pick for each job:\n`);
 for (const [k, m] of Object.entries(picks)) {
   const a = who(k.replace("OPENROUTER_MODEL_", "").toLowerCase());
-  const label = k === "OPENROUTER_SMART_MODEL" ? "Dia's big decisions" : k === "OPENROUTER_FAST_MODEL" ? "everyone else" : `${a.name}, ${a.role}`;
+  const label = k === "OPENROUTER_SMART_MODEL" ? "Dia's big decisions" : k === "OPENROUTER_FAST_MODEL" ? "everyone else"
+    : k.startsWith("OPENROUTER_MODEL_DEPT_") ? `anyone hired into ${k.slice(22).toLowerCase()}` : `${a.name}, ${a.role}`;
   console.log(`  ${(k + "=" + m.id).padEnd(72)} ${label}`);
 }
 console.log(`  ${("OPENROUTER_FALLBACK_MODELS=" + fallback.join(",")).padEnd(72)} backups when a model is busy`);
