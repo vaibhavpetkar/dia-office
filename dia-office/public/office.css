@@ -303,3 +303,35 @@ table.inv tr.tot td{font-weight:700;border-bottom:0;border-top:2px solid var(--l
 .proj .qa{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .proj .qa input{flex:1 1 160px;min-width:0;font:inherit;font-size:.75rem;padding:2px 6px;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
 a.btn{text-decoration:none;display:inline-block}
+
+/* Profile drawer: someone's live work, tasks and history */
+.profile{position:fixed;top:12px;right:12px;bottom:12px;width:min(400px,calc(100vw - 24px));z-index:50;display:flex;flex-direction:column;
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:18px;box-shadow:0 18px 50px rgba(0,0,0,.22);overflow:hidden;outline:none}
+.profile[hidden]{display:none}
+.profile header{display:grid;grid-template-columns:56px 1fr auto;gap:10px;align-items:center;padding:14px 14px 10px}
+.profile header b{font-family:var(--f-display);font-size:1.15rem;display:block;line-height:1.1}
+.profile header span{font-size:.8rem;color:var(--muted)}
+.profile header small{display:block;font-size:.72rem;color:var(--muted)}
+.profile .pav svg,.profile .pav .av{width:56px;height:56px}
+.profile .tag{white-space:nowrap;font-family:var(--f-mono);font-size:.58rem;padding:0 5px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.profile .tag.human{border-color:var(--kumkum);color:var(--kumkum)}
+.ptabs{display:flex;gap:4px;padding:0 14px;border-bottom:1px solid var(--line)}
+.ptabs button{font:inherit;font-size:.82rem;background:none;border:0;border-bottom:2px solid transparent;padding:6px 10px;color:var(--muted);cursor:pointer}
+.ptabs button[aria-selected="true"]{color:var(--peacock);border-bottom-color:var(--peacock);font-weight:600}
+.pbody{padding:12px 14px 16px;overflow:auto;flex:1}
+.pbody h4{margin:14px 0 4px;font-size:.82rem}
+.pbody h4:first-child{margin-top:0}
+.pbody .note{margin:8px 0}
+.pscreen{margin-top:10px;border-radius:12px;overflow:hidden;background:#0d1513;border:1px solid #23332e}
+.pbar{display:flex;align-items:center;gap:5px;padding:6px 10px;background:#18241f;color:#9bb5ad;font-size:.7rem}
+.pbar i{width:9px;height:9px;border-radius:50%;background:#e0605a}.pbar i:nth-child(2){background:#e6b13d}.pbar i:nth-child(3){background:#4cbf6a}
+.pbar span{margin-left:6px;font-family:var(--f-mono)}
+.pscreen pre{margin:0;padding:10px 12px;min-height:170px;font-family:var(--f-mono);font-size:.7rem;line-height:1.5;color:#c7f0dd;white-space:pre-wrap;word-break:break-word}
+.plist{list-style:none;margin:0;padding:0;display:grid;gap:6px;font-size:.8rem}
+.plist small{display:block;color:var(--muted);font-size:.72rem}
+.phist{list-style:none;margin:0;padding:0;font-size:.8rem}
+.phist li{display:grid;grid-template-columns:64px 18px 1fr;gap:6px;padding:6px 0;border-bottom:1px solid var(--line)}
+.phist time{color:var(--muted);font-size:.7rem}
+.phist p{margin:0}
+.o3d-bub.note{font-size:.9rem;padding:2px 8px;background:color-mix(in srgb,var(--marigold) 12%,var(--surface))}
+.records,.stagecol{min-width:0}.recbody{overflow-x:auto;max-width:100%} /* wide record tables scroll inside the card on phones */

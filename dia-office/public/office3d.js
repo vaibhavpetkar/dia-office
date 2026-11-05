@@ -219,6 +219,54 @@ for (const [x, w] of [[-11.6, 3.7], [11.4, 2.6]]) {
   s.position.set(x, 1.5, -7.0); shafts.add(s);
 }
 
+/* Floor 1, either side of Dia's cabin: a glass meeting room on the left; a washroom and a coffee corner on the right. */
+const MEET = { x: -7.9, z: -6.4, chairs: [] }; // where planning meetings happen
+let boardTex = null;
+{
+  const L = level1, glass = glassMat;
+  const rug = mesh(new THREE.PlaneGeometry(3.3, 5.4), mat("#e3eef0", { roughness: 1 }), { cast: false, receive: true });
+  rug.rotation.x = -Math.PI / 2; rug.position.set(MEET.x, 0.01, MEET.z); L.add(rug);
+  const back = mesh(new THREE.BoxGeometry(3.4, 2.2, 0.06), glass, { cast: false }); back.position.set(MEET.x, 1.1, -9.05); L.add(back);
+  for (const x of [-9.6, -6.2]) { const side = mesh(new THREE.BoxGeometry(0.06, 2.2, 5.4), glass, { cast: false }); side.position.set(x, 1.1, -6.35); L.add(side); }
+  const table = mesh(new THREE.BoxGeometry(1.0, 0.08, 3.5), mat("#5b3a29", { roughness: 0.4 }), { receive: true }); table.position.set(MEET.x, 0.74, MEET.z); L.add(table);
+  const stem = mesh(new THREE.BoxGeometry(0.3, 0.7, 2.6), mat("#2b2b2b")); stem.position.set(MEET.x, 0.36, MEET.z); L.add(stem);
+  const seats = [];
+  for (const z of [-7.75, -6.95, -6.15, -5.35]) for (const s of [-1, 1]) {
+    const x = MEET.x + s * 0.85;
+    seats.push([x, 0.45, z, s < 0 ? Math.PI / 2 : -Math.PI / 2]);
+    MEET.chairs.push({ x, z, ry: s < 0 ? Math.PI / 2 : -Math.PI / 2, lane: MEET.x + s * 1.4 });
+  }
+  L.add(instanced(new THREE.BoxGeometry(0.5, 0.08, 0.5), mat("#2b3b38"), seats, { cast: true }));
+  L.add(instanced(new THREE.BoxGeometry(0.06, 0.5, 0.5), mat("#2b3b38"), seats.map(c => [c[0] + (c[3] > 0 ? -0.24 : 0.24), 0.72, c[2]])));
+  // A screen on the back wall shows what the meeting is about.
+  const c = document.createElement("canvas"); c.width = 512; c.height = 256;
+  boardTex = new THREE.CanvasTexture(c); boardTex.colorSpace = THREE.SRGBColorSpace; boardTex.canvas = c;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: boardTex })); screen.position.set(MEET.x, 1.75, -8.98); L.add(screen);
+  label(L, "MEETING ROOM", MEET.x, 2.7, -8.95, 2.2, "#0f6e6a");
+  // Washroom: a closed room with a door.
+  const wall = mat("#e4e1da", { roughness: 0.85 });
+  const box = mesh(new THREE.BoxGeometry(3.0, 2.4, 2.6), wall, { receive: true }); box.position.set(8.1, 1.2, -7.9); L.add(box);
+  const door = mesh(new THREE.BoxGeometry(0.9, 2.0, 0.05), mat("#7a5638", { roughness: 0.5 })); door.position.set(8.1, 1.0, -6.58); L.add(door);
+  const knob = mesh(new THREE.SphereGeometry(0.04, 10, 8), mat("#d8c08a", { metalness: 0.8, roughness: 0.3 })); knob.position.set(8.45, 1.0, -6.54); L.add(knob);
+  label(L, "WASHROOM", 8.1, 2.25, -6.56, 1.8, "#3d6b8b");
+  // Coffee corner: counter, machine and cups.
+  const counter = mesh(new THREE.BoxGeometry(0.7, 1.0, 1.6), mat("#7a5638", { roughness: 0.45 }), { receive: true }); counter.position.set(9.5, 0.5, -5.1); L.add(counter);
+  const ctop = mesh(new THREE.BoxGeometry(0.8, 0.05, 1.7), mat("#efe9df", { roughness: 0.3 })); ctop.position.set(9.5, 1.02, -5.1); L.add(ctop);
+  const machine = mesh(new THREE.BoxGeometry(0.45, 0.45, 0.5), mat("#c9ccd0", { metalness: 0.8, roughness: 0.25 })); machine.position.set(9.55, 1.27, -5.4); L.add(machine);
+  L.add(instanced(new THREE.CylinderGeometry(0.05, 0.045, 0.11, 10), mat("#ffffff", { roughness: 0.4 }), [-4.8, -4.62, -4.44].map(z => [9.4, 1.1, z]), { colors: ["#a4532f", "#efe9df", "#1d4a37"] }));
+  label(L, "COFFEE", 9.5, 1.95, -4.25, 1.1, "#7a5638");
+}
+function drawBoard(title, names) {
+  const g = boardTex.canvas.getContext("2d"), w = 512, h = 256;
+  g.fillStyle = "#14302b"; g.fillRect(0, 0, w, h);
+  g.fillStyle = "#7fe0d4"; g.font = "600 26px Mukta, system-ui, sans-serif"; g.textAlign = "left"; g.fillText(title ? "MEETING NOW" : "ROOM FREE", 24, 42);
+  g.fillStyle = "#ffffff"; g.font = "700 40px 'Baloo 2', Mukta, system-ui, sans-serif"; g.fillText(title || "Book it from the office page", 24, 104, w - 48);
+  if (names) { g.fillStyle = "#cfe8e4"; g.font = "500 26px Mukta, system-ui, sans-serif"; g.fillText(names, 24, 160, w - 48); }
+  boardTex.needsUpdate = true;
+}
+drawBoard();
+
+const CANTEEN = []; // free canteen chairs people can take on a break
 /* Ground floor: reception, kitchen, serving counter and a 128-seat canteen. */
 {
   const L = levels[0];
@@ -249,6 +297,7 @@ for (const [x, w] of [[-11.6, 3.7], [11.4, 2.6]]) {
   L.add(instanced(new THREE.BoxGeometry(0.46, 0.08, 0.42), mat("#2f8a84"), chairs, { colors: ["#2f8a84", "#e0a020", "#d23a5f", "#3b7dd8"] }));
   L.add(instanced(new THREE.BoxGeometry(0.46, 0.45, 0.06), mat("#2f8a84"), chairs.map(c => [c[0], 0.7, c[2] + (c[3] ? 0.2 : -0.2), c[3]]), { colors: ["#2f8a84", "#e0a020", "#d23a5f", "#3b7dd8"] }));
   // People having lunch, and three servers behind the counter (simple figures, drawn in one go).
+  chairs.forEach((c, i) => (i * 7) % 3 && CANTEEN.push({ x: c[0], z: c[2], ry: c[3], walk: c[2] + (c[3] ? 0.83 : -0.83) }));
   const diners = chairs.filter((_, i) => (i * 7) % 3 === 0).slice(0, 40), servers = [[-2.5, 0, -6.6], [1, 0, -6.6], [4.5, 0, -6.6]];
   const bodies = [...diners.map(c => [c[0], 0.78, c[2] + (c[3] ? 0.05 : -0.05)]), ...servers.map(s => [s[0], 1.0, s[2]])];
   const shirts = [...diners.map((_, i) => ["#c2264b", "#334a7a", "#2f8a4c", "#d9930f", "#7b4bb7", "#3a7d8c", "#8a5a2b"][i % 7]), ...servers.map(() => "#f4f4f2")];
@@ -491,12 +540,18 @@ function photoFace() {
   return face;
 }
 
+function leg(body, x, material, len) {
+  const hip = new THREE.Group(); hip.position.set(x, 0.62, 0); body.add(hip);
+  const m = mesh(new THREE.CapsuleGeometry(0.11, len, 6, 12), material); m.position.y = -0.3; hip.add(m);
+  return hip;
+}
 function makePerson(a, { scale = 1, dia = false } = {}) {
   const look = a.look || {};
   const skin = mat(dia ? "#c08a69" : SKIN[look.skin ?? 0] || SKIN[0], { roughness: 0.5 });
   const shirtColor = dia ? "#1f6b45" : look.shirt || "#2b6cb0";
   const root = new THREE.Group(), body = new THREE.Group();
   root.add(body); root.userData.agentId = a.id;
+  const legs = []; // each leg hangs from a hip joint so it can swing when walking and bend when sitting
 
   const torso = mesh(new THREE.CapsuleGeometry(0.33, 0.48, 8, 20), mat(shirtColor, { roughness: 0.7 }));
   torso.position.y = 0.95; torso.scale.set(1, 1, 0.78); body.add(torso);
@@ -515,10 +570,7 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
     }
     const button = mesh(new THREE.SphereGeometry(0.024, 10, 8), mat("#0d2d1e")); button.position.set(0, 0.86, 0.262); body.add(button);
     const hem = mesh(new THREE.CylinderGeometry(0.34, 0.37, 0.22, 24), mat("#1f6b45", { roughness: 0.7 })); hem.position.y = 0.6; hem.scale.z = 0.8; body.add(hem);
-    for (const s of [-0.13, 0.13]) {
-      const leg = mesh(new THREE.CapsuleGeometry(0.11, 0.42, 6, 12), mat("#15161a"));
-      leg.position.set(s, 0.32, 0); body.add(leg);
-    }
+    for (const s of [-0.13, 0.13]) legs.push(leg(body, s, mat("#15161a"), 0.42));
     const silver = mat("#e3e6ea", { metalness: 0.9, roughness: 0.2 });
     for (const s of [-1, 1]) {
       const chain = mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.2, 4), silver, { cast: false });
@@ -528,10 +580,7 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
   } else {
     const collar = mesh(new THREE.TorusGeometry(0.16, 0.035, 8, 20), mat(new THREE.Color(shirtColor).lerp(new THREE.Color("#ffffff"), 0.35)));
     collar.position.y = 1.43; collar.rotation.x = Math.PI / 2; body.add(collar);
-    for (const s of [-0.13, 0.13]) {
-      const leg = mesh(new THREE.CapsuleGeometry(0.11, 0.4, 6, 12), mat("#2f3640"));
-      leg.position.set(s, 0.32, 0); body.add(leg);
-    }
+    for (const s of [-0.13, 0.13]) legs.push(leg(body, s, mat("#2f3640"), 0.4));
   }
   const neck = mesh(new THREE.CylinderGeometry(0.1, 0.11, 0.16, 12), skin);
   neck.position.y = 1.48; body.add(neck);
@@ -602,7 +651,7 @@ function makePerson(a, { scale = 1, dia = false } = {}) {
     gem.position.y = 2.42; body.add(gem);
   }
   root.scale.setScalar(scale);
-  return { root, body, head, eyes, arms, mouth, smile, gem, speaking: false, working: false, wave: 0, t: Math.random() * 10 };
+  return { root, body, head, eyes, arms, legs, mouth, smile, gem, speaking: false, working: false, wave: 0, t: Math.random() * 10 };
 }
 
 /* ---------- Desks ---------- */
@@ -641,6 +690,12 @@ let selectedId = "dia", selRing, greeter = null;
   selRing.rotation.x = Math.PI / 2; selRing.position.y = 0.03; level1.add(selRing);
 }
 
+function showBubble(id) {
+  const e = people.get(id); if (!e) return;
+  const text = e.status || e.note || "", b = bubbleEl(id);
+  b.textContent = text; b.hidden = !text;
+  b.classList.toggle("dia", id === "dia"); b.classList.toggle("note", !e.status && !!e.note);
+}
 function bubbleEl(id) {
   if (!bubbles.has(id)) { const b = document.createElement("div"); b.className = "o3d-bub"; b.hidden = true; overlay.appendChild(b); bubbles.set(id, b); }
   return bubbles.get(id);
@@ -651,7 +706,7 @@ function addPerson(a) {
     const p = makePerson(a, { scale: 1.32, dia: true });
     p.root.position.set(-0.6, 0, -5.9); p.root.rotation.y = 0.12;
     level1.add(p.root);
-    const entry = { person: p, level: level1, anchor: new THREE.Vector3(-0.6, 3.25, -5.9) };
+    const entry = { id: "dia", name: "Dia", person: p, level: level1, anchor: new THREE.Vector3(-0.6, 3.25, -5.9) };
     people.set("dia", entry);
     // Swap in her realistic body once it has downloaded; the cartoon stays if it can't load.
     import("./diabody.js").then(m => m.loadRealDia()).then(real => {
@@ -674,7 +729,12 @@ function addPerson(a) {
   p.desk = d;
   r.level.add(p.root);
   if (!reduceMotion) { p.root.scale.setScalar(0.01); p.pop = 0; }
-  people.set(a.id, { person: p, level: r.level, anchor: new THREE.Vector3(x, 2.55, z - 0.15) });
+  const n = levels.indexOf(r.level), zs = z - 0.15, f2 = r.floor === 2;
+  // How to get from the chair to the corridor in front of the room: sideways into the gap between desks, then forward.
+  const gap = x - (f2 ? 1.05 : 1.175), corr = r.z + (f2 ? 2.5 : 3.1);
+  const home = { level: n, pts: [[x, zs], [gap, zs], [gap, corr]], sit: { ry: 0, y: -0.38 }, desk: true };
+  const visit = { level: n, pts: [[x - 0.8, zs - 0.32], [gap, zs - 0.32], [gap, corr]], face: [x, zs] };
+  people.set(a.id, { id: a.id, name: a.name, person: p, level: r.level, anchor: new THREE.Vector3(x, 2.55, zs), home, visit, seated: true });
 }
 
 /* ---------- Document hand-offs ---------- */
@@ -688,6 +748,192 @@ function handoff(from, to, label) {
   const tag = document.createElement("div"); tag.className = "o3d-doc"; tag.textContent = label; overlay.appendChild(tag);
   const y = A.level.position.y, a = A.anchor.clone().setY(1.6 + y), b = B.anchor.clone().setY(1.6 + y), mid = a.clone().lerp(b, 0.5).setY(4.2 + y);
   flights.push({ paper, tag, a, b, mid, t: 0, level: A.level });
+}
+
+/* ---------- Walking about: hand-overs, meetings and breaks ----------
+   Everyone has a home chair. A job is a little script (walk here, hand this over, sit there) run one after another per
+   person. Paths follow the corridors: out of the desk row, along the corridor in front of the room, up an aisle between
+   rooms, and the lift for other floors. */
+const NET = { 0: { aisles: [-6.8, 0, 6.8], top: -3.6 }, 1: { aisles: [0], top: -3.1 }, 2: { aisles: [-7.4, 0, 7.4], top: -3.6 } };
+const LIFT = [-11.6, -5.3], SPEED = 2.1;
+const DIA_VISIT = { level: 1, pts: [[0.55, -5.2], [0.55, -3.1]], face: [-0.6, -5.9] };
+const COFFEE = { level: 1, pts: [[8.75, -5.1], [8.1, -3.1]], face: [9.5, -5.1] };
+const WASHROOM = { level: 1, pts: [[8.1, -6.75], [8.1, -6.0], [8.1, -3.1]] };
+
+function link(a, b, n) { // from one corridor point to another on the same floor
+  if (Math.abs(a[1] - b[1]) < 0.05) return [b];
+  const cost = x => Math.abs(a[0] - x) + Math.abs(b[0] - x);
+  const ax = NET[n].aisles.reduce((best, x) => (cost(x) < cost(best) ? x : best));
+  return [[ax, a[1]], [ax, b[1]], b];
+}
+const run = (e, act) => new Promise(done => { e.act = { ...act, done }; });
+const pause = (e, t) => run(e, { kind: "wait", t });
+const walk = (e, pts) => run(e, { kind: "walk", pts, i: 0 });
+const tween = (e, { y, ry, dur = 0.45 }) => {
+  const r = e.person.root;
+  return run(e, { kind: "tween", t: 0, dur, y0: r.position.y, y1: y ?? r.position.y, r0: r.rotation.y, dr: ry === undefined ? 0 : angle(ry - r.rotation.y) });
+};
+const angle = a => Math.atan2(Math.sin(a), Math.cos(a));
+const face = (e, [x, z]) => tween(e, { ry: Math.atan2(x - e.person.root.position.x, z - e.person.root.position.z), dur: 0.3 });
+async function standUp(e) { if (e.seated) { e.seated = false; await tween(e, { y: 0, dur: 0.5 }); } }
+async function sitDown(e, sit) { await tween(e, { ry: sit.ry, dur: 0.3 }); await tween(e, { y: sit.y, dur: 0.5 }); e.seated = true; }
+
+async function goTo(e, spot) {
+  const from = e.at || e.home, a = from.pts[from.pts.length - 1], b = spot.pts[spot.pts.length - 1];
+  const out = from.pts.slice(1), back = spot.pts.slice(0, -1).reverse();
+  await standUp(e);
+  if (from.level === spot.level) await walk(e, [...out, ...link(a, b, spot.level), ...back]);
+  else { // down or up in the lift
+    const topA = [LIFT[0], NET[from.level].top], topB = [LIFT[0], NET[spot.level].top];
+    await walk(e, [...out, ...link(a, topA, from.level), LIFT]);
+    await tween(e, { ry: Math.PI, dur: 0.3 }); await pause(e, 0.5);
+    const r = e.person.root; r.visible = false; await pause(e, 1.6);
+    e.level.remove(r); e.level = levels[spot.level]; e.level.add(r); r.position.set(LIFT[0], 0, LIFT[1]); r.rotation.y = 0;
+    await pause(e, 0.3); r.visible = true;
+    await walk(e, [topB, ...link(topB, b, spot.level), ...back]);
+  }
+  e.at = spot;
+  if (spot.face) await face(e, spot.face);
+}
+async function goHome(e) {
+  where(e, "Walking back to their desk", "");
+  await goTo(e, e.home); await sitDown(e, e.home.sit);
+  where(e, "", "");
+}
+function queue(e, job) {
+  e.pending = (e.pending || 0) + 1;
+  e.chain = (e.chain || Promise.resolve()).then(() => job(e)).catch(err => console.warn("office animation", err)).finally(() => e.pending--);
+}
+// What someone is doing right now, for their profile, plus a short note over their head when they have no task text.
+function where(e, text, note) { e.where = text; e.note = note; showBubble(e.id); }
+
+// Things they can hold in their right hand: a document or a cup of coffee.
+function prop(p, key, make) { if (!p[key]) { p[key] = make(); p.arms[1].add(p[key]); } return p[key]; }
+function hold(e, label) {
+  const paper = prop(e.person, "paper", () => { const m = mesh(new THREE.BoxGeometry(0.32, 0.02, 0.24), mat("#ffd36b", { emissive: "#f2a516", emissiveIntensity: 0.5 })); m.position.set(0, -0.64, 0.12); return m; });
+  paper.visible = true;
+  if (label) { e.tag?.remove(); e.tag = document.createElement("div"); e.tag.className = "o3d-doc"; e.tag.textContent = "📄 " + label; overlay.appendChild(e.tag); }
+}
+function drop(e) { if (e.person.paper) e.person.paper.visible = false; e.tag?.remove(); e.tag = null; }
+
+// A hand-over: the sender gets up, walks over with the document, hands it across and walks back.
+// Dia stays in her cabin, so for work from Dia the receiver comes to collect it.
+function handover(from, to, label) {
+  const A = people.get(from), B = people.get(to);
+  if (reduceMotion || !A || !B || from === to) return false;
+  const walker = from === "dia" ? B : A;
+  if (!walker.home || walker.pending > 2) return false;
+  queue(walker, async e => {
+    if (from === "dia") {
+      where(e, `Going to Dia's cabin to collect “${label}”`, "→ Dia");
+      await goTo(e, DIA_VISIT); api.wave(); await pause(e, 0.6);
+      e.person.reach = 1.1; await pause(e, 1.1); hold(e, label);
+      where(e, `Taking “${label}” back to their desk`, "");
+      await goHome(e); drop(e);
+      return;
+    }
+    hold(e, label);
+    where(e, `Taking “${label}” to ${B.name}`, `→ ${B.name}`);
+    await goTo(e, to === "dia" ? DIA_VISIT : B.visit);
+    e.person.reach = 1.2; B.person.reach = 1.2;
+    if (to === "dia") api.wave();
+    await pause(e, 0.7); drop(e);
+    if (to !== "dia") { hold(B); B.person.paperT = 2.5; }
+    await pause(e, 0.6);
+    await goHome(e);
+  });
+  return true;
+}
+
+// Planning meetings: everyone walks to the meeting room, sits, takes turns to talk, then goes back to their own chair.
+let meetingNow = null;
+function meeting(title, ids, seconds = 20) {
+  if (reduceMotion || meetingNow) return false;
+  const list = [...new Set(ids)].map(id => people.get(id)).filter(e => e?.home).slice(0, MEET.chairs.length);
+  if (list.length < 2) return false;
+  const m = meetingNow = { title, list, arrived: 0 };
+  drawBoard(title, list.map(e => e.name).join(" · "));
+  let release; const over = new Promise(r => (release = r));
+  const talk = () => {
+    if (m.started) return; m.started = true;
+    let k = 0; const turn = () => list.forEach((e, i) => (e.person.speaking = i === k % list.length)); turn();
+    const timer = setInterval(() => { k++; turn(); }, 2600);
+    setTimeout(() => { clearInterval(timer); list.forEach(e => (e.person.speaking = false)); release(); }, seconds * 1000);
+  };
+  setTimeout(talk, 45000); // start without anyone who is held up
+  list.forEach((e, i) => {
+    const c = MEET.chairs[i], spot = { level: 1, pts: [[c.x, c.z], [c.lane, c.z], [c.lane, -4.0], [MEET.x, -3.1]] };
+    queue(e, async e => {
+      where(e, `Going to the meeting: ${title}`, "📋 Meeting");
+      await goTo(e, spot); await sitDown(e, { ry: c.ry, y: -0.3 });
+      where(e, `In the meeting: ${title}`, "");
+      if (++m.arrived === list.length) talk();
+      await over;
+      await goHome(e);
+    });
+  });
+  over.then(() => { meetingNow = null; drawBoard(); });
+  return true;
+}
+
+// Breaks: when someone has nothing to do they now and then get a coffee, use the washroom or have a snack in the canteen.
+async function coffee(e) {
+  where(e, "On a coffee break", "☕");
+  await goTo(e, COFFEE); await pause(e, 1.2);
+  const cup = prop(e.person, "cup", () => { const m = mesh(new THREE.CylinderGeometry(0.06, 0.05, 0.13, 12), mat("#efe9df")); m.position.set(0, -0.66, 0.08); return m; });
+  cup.visible = true; e.person.sip = true; await pause(e, 7);
+  e.person.sip = false; cup.visible = false;
+  await goHome(e);
+}
+async function washroom(e) {
+  where(e, "In the washroom", "🚻");
+  await goTo(e, WASHROOM);
+  e.person.root.visible = false; await pause(e, 7); e.person.root.visible = true;
+  await goHome(e);
+}
+async function canteen(e) {
+  const free = CANTEEN.filter(c => !c.taken), c = free[Math.floor(Math.random() * free.length)];
+  if (!c) return coffee(e);
+  c.taken = true;
+  try {
+    where(e, "Having a snack in the canteen", "🍽");
+    await goTo(e, { level: 0, pts: [[c.x, c.z], [c.x, c.walk]] }); await sitDown(e, { ry: c.ry, y: -0.3 });
+    await pause(e, 14);
+  } finally { c.taken = false; }
+  await goHome(e);
+}
+let breaks = 0;
+if (!reduceMotion) setInterval(() => {
+  if (document.hidden || breaks >= 2 || Math.random() < 0.3) return;
+  const free = [...people.values()].filter(e => e.home && !e.pending && !e.status && !e.person.working);
+  if (free.length < 2) return;
+  const e = free[Math.floor(Math.random() * free.length)], r = Math.random();
+  breaks++;
+  queue(e, async e => { try { await (r < 0.45 ? coffee : r < 0.75 ? washroom : canteen)(e); } finally { breaks--; } });
+}, 9000);
+
+// One frame of whatever someone is doing: waiting, turning/standing/sitting, or walking.
+function act(e, dt) {
+  const a = e.act, p = e.person, r = p.root;
+  p.walking = false;
+  if (!a) return;
+  const finish = () => { e.act = null; a.done(); };
+  if (a.kind === "wait") { if ((a.t -= dt) <= 0) finish(); return; }
+  if (a.kind === "tween") {
+    a.t = Math.min(1, a.t + dt / a.dur); const k = a.t * a.t * (3 - 2 * a.t);
+    r.position.y = a.y0 + (a.y1 - a.y0) * k; r.rotation.y = a.r0 + a.dr * k;
+    if (a.t >= 1) finish();
+    return;
+  }
+  p.walking = true; p.stride = (p.stride || 0) + dt * 7.5;
+  let left = SPEED * dt;
+  while (left > 0 && a.i < a.pts.length) {
+    const [tx, tz] = a.pts[a.i], dx = tx - r.position.x, dz = tz - r.position.z, d = Math.hypot(dx, dz);
+    if (d > 0.02) r.rotation.y += angle(Math.atan2(dx, dz) - r.rotation.y) * Math.min(1, dt * 10);
+    if (d <= left) { r.position.x = tx; r.position.z = tz; left -= d; a.i++; }
+    else { r.position.x += (dx / d) * left; r.position.z += (dz / d) * left; left = 0; }
+  }
+  if (a.i >= a.pts.length) { p.walking = false; finish(); }
 }
 
 /* ---------- Picking ---------- */
@@ -764,16 +1010,19 @@ function place(el, pos) {
 }
 
 renderer.setAnimationLoop(() => {
-  const dt = Math.min(clock.getDelta(), 0.05), now = clock.elapsedTime;
+  const raw = clock.getDelta(), dt = Math.min(raw, 0.05), now = clock.elapsedTime;
+  const simDt = Math.min(raw, 0.5); // walking keeps real time even when frames are slow
   controls.update();
   if (greeter && levels[0].visible) greeter.update(dt);
-  for (const [id, { person: p, anchor }] of people) {
+  for (const [id, e] of people) {
+    const p = e.person, anchor = e.anchor;
     p.t += dt;
+    act(e, simDt);
     if (p.real) p.real.update(dt, p.speaking && !reduceMotion);
     if (p.pop !== undefined) { p.pop = Math.min(1, p.pop + dt * 2.2); const k = 1 - Math.pow(1 - p.pop, 3); p.root.scale.setScalar((id === "dia" ? 1.32 : 1) * (0.01 + k * 0.99 * (1 + Math.sin(p.pop * Math.PI) * 0.12))); if (p.pop >= 1) delete p.pop; }
     if (!reduceMotion) {
       // Breathing, blinking, and a small head turn toward the camera.
-      p.body.position.y = Math.sin(p.t * 2.1) * 0.012 + (p.working ? Math.abs(Math.sin(p.t * 9)) * 0.012 : 0);
+      p.body.position.y = Math.sin(p.t * 2.1) * 0.012 + (p.working && e.seated ? Math.abs(Math.sin(p.t * 9)) * 0.012 : 0) + (p.walking ? Math.abs(Math.sin(p.stride)) * 0.05 : 0);
       p.eyes.scale.y = (p.t % 4.3) < 0.12 ? 0.1 : 1;
       p.head.rotation.y = Math.sin(p.t * 0.6) * 0.18;
       p.head.rotation.z = Math.sin(p.t * 0.9) * 0.04;
@@ -781,8 +1030,19 @@ renderer.setAnimationLoop(() => {
       if (p.gem) { p.gem.rotation.y += dt * 1.6; p.gem.position.y = 2.42 + Math.sin(p.t * 2) * 0.05; }
     }
     // Arms: typing while working, waving when Dia greets, resting otherwise.
-    const [L, R] = p.arms;
-    if (p.wave > 0) {
+    const [L, R] = p.arms, atDesk = e.seated && (!e.at || e.at === e.home);
+    if (p.reach > 0) p.reach -= dt;
+    if (p.paperT > 0 && (p.paperT -= dt) <= 0 && p.paper) p.paper.visible = false;
+    if (p.reach > 0) { // holding out a document, or taking one
+      R.rotation.x += (-1.35 - R.rotation.x) * 0.2; L.rotation.x += (-0.8 - L.rotation.x) * 0.2;
+      R.rotation.z += (0.08 - R.rotation.z) * 0.2; L.rotation.z += (-0.08 - L.rotation.z) * 0.2;
+    } else if (p.sip) { // coffee: the cup comes up to the mouth now and then
+      const up = Math.max(0, Math.sin(now * 1.4)) ** 2;
+      R.rotation.x += (-0.9 - up * 1.3 - R.rotation.x) * 0.15; R.rotation.z += (0.1 + up * 0.35 - R.rotation.z) * 0.15; L.rotation.x += (0 - L.rotation.x) * 0.1;
+    } else if (p.walking) {
+      const sw = reduceMotion ? 0 : Math.sin(p.stride) * 0.55;
+      L.rotation.x = sw; R.rotation.x = p.paper?.visible ? -0.85 : -sw; L.rotation.z = -0.1; R.rotation.z = 0.1;
+    } else if (p.wave > 0) {
       p.wave -= dt;
       R.rotation.z = -2.5 + Math.sin(now * 12) * 0.35; R.rotation.x = 0;
     } else if (p.speaking && !reduceMotion) {
@@ -791,19 +1051,26 @@ renderer.setAnimationLoop(() => {
       R.rotation.x += ((-0.75 + g1 * 0.35) - R.rotation.x) * 0.08; R.rotation.z += ((0.35 + g1 * 0.12) - R.rotation.z) * 0.08;
       L.rotation.x += ((-0.55 + g2 * 0.3) - L.rotation.x) * 0.08; L.rotation.z += ((-0.3 - g2 * 0.1) - L.rotation.z) * 0.08;
       p.head.rotation.x = Math.sin(now * 4.2) * 0.04 + Math.sin(now * 1.3) * 0.03;
-    } else if (p.working && id !== "dia") {
+    } else if (p.working && id !== "dia" && atDesk) {
       L.rotation.x = -1.1 + Math.sin(now * 16) * 0.08; R.rotation.x = -1.1 + Math.sin(now * 16 + 1.5) * 0.08;
       L.rotation.z = -0.25; R.rotation.z = 0.25;
     } else {
-      L.rotation.x += (0 - L.rotation.x) * 0.1; R.rotation.x += (id === "dia" ? 0 : -0.55 - R.rotation.x) * 0.1;
-      if (id !== "dia") L.rotation.x += (-0.55 - L.rotation.x) * 0.1;
+      const rest = atDesk ? -0.55 : 0; // hands on the desk, or hanging when standing
+      L.rotation.x += (0 - L.rotation.x) * 0.1; R.rotation.x += (id === "dia" ? 0 : rest - R.rotation.x) * 0.1;
+      if (id !== "dia") L.rotation.x += (rest - L.rotation.x) * 0.1;
       L.rotation.z += (-0.12 - L.rotation.z) * 0.1; R.rotation.z += (0.12 - R.rotation.z) * 0.1;
     }
+    // Legs swing when walking and bend at the hip when sitting.
+    const sitting = e.seated || p.root.position.y < -0.15;
+    p.legs.forEach((h, i) => { const t = p.walking && !reduceMotion ? Math.sin(p.stride + i * Math.PI) * 0.6 : sitting ? -1.35 : 0; h.rotation.x += (t - h.rotation.x) * (p.walking ? 1 : 0.15); });
     // Talking: the mouth opens and closes; the smile stays.
     const open = p.speaking ? 0.35 + Math.abs(Math.sin(now * 14)) * 0.9 + Math.sin(now * 23) * 0.2 : 0.05;
     p.mouth.scale.y += (open - p.mouth.scale.y) * 0.4;
     if (p.desk) p.desk.logo.material.emissiveIntensity += ((p.working ? 1.4 + Math.sin(now * 6) * 0.3 : 0.15) - p.desk.logo.material.emissiveIntensity) * 0.1;
-    const b = bubbles.get(id); if (b && !b.hidden) { place(b, v2.copy(anchor).add(people.get(id).level.position)); if (!levelShown(people.get(id).level)) b.style.visibility = "hidden"; }
+    if (id !== "dia") anchor.set(p.root.position.x, p.root.position.y + 2.93, p.root.position.z); // speech follows them about
+    const shown = levelShown(e.level) && p.root.visible;
+    const b = bubbles.get(id); if (b && !b.hidden) { place(b, v2.copy(anchor).add(e.level.position)); if (!shown) b.style.visibility = "hidden"; }
+    if (e.tag) { place(e.tag, v2.copy(anchor).add(e.level.position).setY(anchor.y + e.level.position.y - 0.55)); if (!shown) e.tag.style.visibility = "hidden"; }
   }
   for (let i = flights.length - 1; i >= 0; i--) {
     const f = flights[i]; f.t += dt / 1.25;
@@ -813,7 +1080,8 @@ renderer.setAnimationLoop(() => {
     place(f.tag, v.clone().setY(v.y + 0.5));
     if (t >= 1) { f.level.remove(f.paper); f.tag.remove(); flights.splice(i, 1); }
   }
-  const sel = people.get(selectedId); if (sel) selRing.position.set(sel.person.root.position.x, 0.03, sel.person.root.position.z);
+  const sel = people.get(selectedId);
+  if (sel) { if (selRing.parent !== sel.level) sel.level.add(selRing); selRing.position.set(sel.person.root.position.x, 0.03, sel.person.root.position.z); selRing.visible = sel.person.root.visible; }
   selRing.rotation.z = now * 0.6;
   renderer.render(scene, camera);
 });
@@ -828,10 +1096,19 @@ const api = {
   bubble(id, text, working) {
     const p = people.get(id); if (!p) return;
     p.person.working = !!working && id !== "dia";
-    const b = bubbleEl(id); b.textContent = text || ""; b.hidden = !text;
-    b.classList.toggle("dia", id === "dia");
+    p.status = text || "";
+    showBubble(id);
   },
-  handoff,
+  // Someone takes work to someone else: they walk it over when they can, otherwise the paper flies across.
+  handoff(from, to, label) { if (!handover(from, to, label)) handoff(from, to, label); },
+  meeting,
+  // Where someone is and what they are doing on the floor, for their profile.
+  whereIs(id) {
+    const e = people.get(id); if (!e) return null;
+    return { doing: e.where || (e.seated || id === "dia" ? (id === "dia" ? "In her cabin" : "At their desk") : "Walking"),
+      floor: ["Ground floor", "Floor 1", "Floor 2"][levels.indexOf(e.level)], away: !!e.pending, meeting: meetingNow?.title || null };
+  },
+  takeBreak(id, kind = "coffee") { const e = people.get(id); if (e?.home && !reduceMotion) queue(e, { coffee, washroom, canteen }[kind] || coffee); },
   select,
   talk(on) { const d = people.get("dia"); if (d) d.person.speaking = !!on; },
   wave() { const d = people.get("dia"); if (d && !reduceMotion) { d.person.wave = 2.2; d.person.real?.wave(); } },

@@ -92,6 +92,14 @@ Pick **EN / हिं / मरा** under her name. Dia answers in that language
 | Browser (free) | Open the office in **Microsoft Edge**. Edge includes natural voices: Neerja (English), Swara (Hindi), Aarohi (Marathi) | Natural. Chrome on Windows usually has no Marathi voice; the page tells you when one is missing |
 | Azure neural (any browser) | Create a Speech resource in Azure, then set `AZURE_SPEECH_KEY` and `AZURE_SPEECH_REGION` in `.env` | The same natural voices on every browser and phone, and lip-sync follows the real audio |
 
+## Life on the floor
+
+The staff move about the 3D office:
+- **Hand-overs.** When work passes from one person to another, the sender stands up from their chair, walks the corridors to the other person's desk with the document, hands it over and walks back to sit down. Work from Dia is collected from her cabin. People on another floor take the lift.
+- **Meetings.** Neel calls the team to the floor 1 **meeting room** to plan each project, and Dia's kick-off for a request brings in everyone with a task. They sit round the table, take turns to talk (the screen on the wall shows the topic), then go back to their own chairs. You can call one from anyone's profile, or with `POST /api/meetings`.
+- **Breaks.** Someone with nothing to do now and then gets a coffee at the floor 1 coffee corner, uses the washroom, or has a snack in the ground-floor canteen.
+- **Profiles.** Click anyone to open their profile: what they are doing right now (at their desk, walking to someone, in a meeting, on a break), their current task, an illustration of their screen for that kind of work (code, debugging, tests, a deploy, writing), their open and finished jobs, their build tasks from Neel's plans, and their full history including meetings and hand-overs. Tasks and history need the director key.
+
 ## The Dia app (phone and desktop)
 
 Open **`/app.html`** (or press **Dia app ↗** in the office). It's made for a phone and works on a laptop too: talk or type to Dia in English, Hindi or Marathi, give her jobs and watch each team deliver, see pictures, storyboards and starter pages, and approve decisions. On a phone use **Add to Home Screen**; in Chrome or Edge on a computer use the install icon in the address bar.
@@ -120,6 +128,8 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | Method | Path | Who |
 |---|---|---|
 | GET | `/api/state` | anyone who can open the page |
+| GET | `/api/agents/:id` (profile: who they are and what they're doing; tasks, build tasks, hand-overs and history with the key) | anyone; details need the director key |
+| POST | `/api/meetings` `{title, people:["neel","tara",…]}` (2 to 8 people) | director key |
 | POST | `/api/leads`, `/api/webhooks/lead` | director key |
 | POST | `/api/candidates` | director key |
 | GET/POST | `/api/interview/:token` | the candidate (secret link) |
@@ -159,6 +169,6 @@ For AWS (EC2 + RDS or Neon + Bedrock + SES, HTTPS with Caddy), follow **[docs/DE
 - QA's automated checks look at the page over HTTP; they don't click through it in a browser. The Playwright script Sneha writes is for your developers to commit and run in CI, and Aditya's checklist is done by a person with real devices.
 - AI interview scores support a person's decision; they don't replace it. Keep a human approving every hire.
 - There is one director key. Separate logins and roles for several people are not built yet.
-- Dia's 3D face is her photo painted onto a stock scanned head, so the shape of her face is the model's, not hers, and the top of her hair is the model's own. A 3D scan of her real face (or a paid avatar service) would be needed for a true likeness. The other staff are still simple figures.
+- Dia's 3D face is her photo painted onto a stock scanned head, so the shape of her face is the model's, not hers, and the top of her hair is the model's own. A 3D scan of her real face (or a paid avatar service) would be needed for a true likeness. The other staff are still simple figures, and the screen in their profile is an illustration of the kind of work they are doing, not a recording of it. Hand-overs in a profile are kept in memory, so they start again when the office restarts.
 - Floor 2 departments start empty (except QA & Testing, where Sneha and Aditya sit): their desks fill as you hire into them. The diners in the canteen are decoration.
 - The Python agents in `dia-ai/` are a separate prototype; the office does not call them.

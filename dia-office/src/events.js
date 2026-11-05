@@ -13,9 +13,10 @@ export function attach(wss, keyMatches) {
   });
 }
 const PRIVATE = new Set(["activity", "approval", "approval_done"]);
-export function broadcast(msg) {
-  const s = JSON.stringify(msg), priv = PRIVATE.has(msg.type);
-  for (const c of clients) if (c.readyState === 1 && (!priv || c.director)) c.send(s);
+// `pub`, when given, is what people without the director key get instead (e.g. without client names).
+export function broadcast(msg, pub) {
+  const s = JSON.stringify(msg), p = pub && JSON.stringify(pub), priv = PRIVATE.has(msg.type);
+  for (const c of clients) if (c.readyState === 1) { if (c.director) c.send(s); else if (p) c.send(p); else if (!priv) c.send(s); }
 }
 
 // An agent says what it is doing (shown as a speech bubble).
@@ -32,10 +33,26 @@ export async function log(agentId, text, data = null, countTask = true) {
   broadcast({ type: "activity", item: row });
 }
 
-// A document travelling between desks (animation only).
+// Work passing from one person to another. On the 3D floor the sender gets up and walks it over.
+// The last few hundred hand-overs are kept in memory for people's profiles (they start again when the office restarts).
+export const handoffs = [];
 export function handoff(from, to, label) {
+  handoffs.unshift({ from, to, label, at: new Date().toISOString() });
+  handoffs.length = Math.min(handoffs.length, 500);
   broadcast({ type: "handoff", from, to, label });
   return new Promise(r => setTimeout(r, 1300));
+}
+
+// A meeting: the people walk to the meeting room on floor 1, take turns to talk, then go back to their desks.
+// It goes in each person's history; the feed gets one line from whoever called it.
+export async function meeting(title, people, { by = people[0], seconds = 20 } = {}) {
+  const rows = (await q("SELECT id, name FROM agents WHERE id = ANY($1)", [[...new Set(people)]])).rows;
+  const ids = people.filter((id, i) => people.indexOf(id) === i && rows.some(r => r.id === id));
+  if (ids.length < 2) return null;
+  broadcast({ type: "meeting", title, people: ids, seconds }, { type: "meeting", title: "Team meeting", people: ids, seconds });
+  const names = ids.filter(id => id !== by).map(id => rows.find(r => r.id === id).name);
+  await log(by, `called a meeting "${title}" with ${names.join(", ")}.`, { meeting: { title, people: ids } }, false);
+  return ids;
 }
 
 export const refresh = what => broadcast({ type: "refresh", what });

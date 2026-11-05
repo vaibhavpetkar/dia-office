@@ -138,6 +138,7 @@
   </div>
 </div>
 
+<aside class="profile" id="profile" hidden aria-label="Profile" tabindex="-1"></aside>
 <script src="faces.js"></script>
 <script src="talkingface.js"></script>
 <script type="module" src="office3d.js"></script>
@@ -192,7 +193,7 @@ function renderFloor(){
   window.Office3D?.setAgents(S.agents);
   for(const a of S.agents){const t=keep[a.id]??(a.status!=="Idle"?a.status:"");bubble(a.id,t,!!t&&a.id!=="dia")}
 }
-floor.addEventListener("click",e=>{const b=e.target.closest(".agent");if(b){selected=b.dataset.id;renderWho()}});
+floor.addEventListener("click",e=>{const b=e.target.closest(".agent");if(b){selected=b.dataset.id;renderWho();openProfile(selected)}});
 function bubble(id,text,working){
   window.Office3D?.bubble(id,text,working);
   const el=document.getElementById("ag-"+id);if(!el)return;
@@ -206,8 +207,117 @@ function renderWho(){
   document.getElementById("who").innerHTML=`<div class="who-panel">${av}<div><b>${esc(a.name)}</b> · ${esc(a.role)}<br>
     <span style="color:var(--muted);font-size:.8rem">${DEPTS[a.dept]?.name||""}${a.monthly_cost?` · ${inr(a.monthly_cost)}/mo`:""} · ${a.tasks_done} tasks done</span></div></div>
     <dl class="kv" style="margin:8px 0 0"><dt>Now</dt><dd>${esc(a.status||"Idle")}</dd></dl>
-    ${recent.length?`<ul>${recent.map(r=>`<li>${esc(r.text)}</li>`).join("")}</ul>`:`<p class="empty">No finished work yet.</p>`}`;
+    ${recent.length?`<ul>${recent.map(r=>`<li>${esc(r.text)}</li>`).join("")}</ul>`:`<p class="empty">No finished work yet.</p>`}
+    <button class="btn" type="button" data-profile="${esc(a.id)}" style="margin-top:8px">Open profile: history, tasks, live work</button>`;
 }
+document.getElementById("who").addEventListener("click",e=>{const b=e.target.closest("[data-profile]");if(b)openProfile(b.dataset.profile)});
+
+/* ---------- Profile: everything one person has done, what they have on, and what they're doing right now ---------- */
+const profEl=document.getElementById("profile");
+let prof=null; // {id, data, tab, timer, screen}
+// What kind of work their current task text describes, for the live screen.
+const WORK=[[/debug|bug|fix/i,"debug","Debugging"],[/build|code|develop|website|site|updating|starter|set up/i,"code","Writing code"],
+  [/test|qa\b|check/i,"test","Testing"],[/deploy|aws|release|server/i,"deploy","Deploying"],
+  [/writ|draft|post|case study|content|caption|campaign|article|brief/i,"write","Writing"],[/invoice|billing|account|payment/i,"money","Accounts"],
+  [/interview|scor|review|analys|reading|plan|research|captur|nurtur|onboard|assign/i,"review","Reviewing"]];
+const workKind=t=>{for(const [re,k,l] of WORK)if(re.test(t||""))return {k,l};return {k:"busy",l:"Working"}};
+function screenLines(a,kind,latest){
+  const t=a.status||"",slug=(t.match(/WO-[\w-]+|#\d+/)?.[0]||"task").toLowerCase().replace(/[^a-z0-9-]/g,"");
+  const real=latest?String(typeof latest==="string"?latest:JSON.stringify(latest,null,1)).split("\n").map(l=>l.slice(0,70)).filter(Boolean).slice(0,6):[];
+  const L={
+    code:[`$ git switch -c ${slug}`,`// ${t}`,"export async function handler(req, res) {","  const rows = await db.query(sql, params);","  if (!rows.length) return res.status(404).end();","  res.json(rows);","}","$ npm run build","✓ built in 2.4s"],
+    debug:["$ npm test","✗ 1 failing","  at checkout.js:42",`// ${t}`,"- const total = price * qty;","+ const total = Math.round(price * qty * 100) / 100;","$ npm test","✓ all passing"],
+    test:[`▶ ${t}`,"✓ home page loads (200)","✓ no broken links","✓ form shows errors","! an image has no alt text","✓ fits a 375px phone","4 passed · 1 warning"],
+    deploy:[`# ${t}`,"$ docker build -t app .","$ aws ecr push app:latest","$ aws ecs update-service --force-new-deployment","… waiting for health checks","✓ healthy in ap-south-1"],
+    write:[`✎ ${t}`,...(real.length?real:["Headline: what changed for the client","Two lines on the problem they had","What we built, in plain words","One number that shows the result"])],
+    money:[`₹ ${t}`,"Subtotal ………………","GST 18% ………………","Total ………………","Due in 15 days"],
+    review:[`☐ ${t}`,...(real.length?real:["• What do they need?","• Budget and timeline","• Risks","• Next step"])],
+    busy:[`… ${t}`,...real]};
+  return L[kind]||L.busy;
+}
+async function openProfile(id){
+  if(!id)return;
+  clearInterval(prof?.timer);
+  prof={id,data:null,tab:prof?.id===id?prof.tab:"now",screen:{lines:[],i:0,c:0,key:""}};
+  profEl.hidden=false;renderProfile();profEl.focus({preventScroll:true});
+  prof.timer=setInterval(()=>{tickScreen();renderNow()},110);
+  await loadProfile();
+}
+async function loadProfile(){
+  const id=prof?.id;if(!id)return;
+  try{const r=await fetch("/api/agents/"+encodeURIComponent(id),{headers:KEY?{authorization:"Bearer "+KEY}:{}});
+    const j=await r.json();if(prof?.id===id){prof.data=r.ok?j:{error:j.error||"Could not load"};renderProfile()}}catch{}
+}
+let profReload;const profileSoon=id=>{if(prof?.id===id&&!profEl.hidden){clearTimeout(profReload);profReload=setTimeout(loadProfile,500)}};
+function closeProfile(){clearInterval(prof?.timer);prof=null;profEl.hidden=true}
+const ago=t=>{const s=(Date.now()-new Date(t))/1000;return s<60?"just now":s<3600?Math.floor(s/60)+" min ago":s<86400?Math.floor(s/3600)+" h ago":when(t)};
+function renderProfile(){
+  if(!prof)return;
+  const a=S.agents.find(x=>x.id===prof.id)||prof.data?.agent;if(!a){profEl.innerHTML="";return}
+  const d=prof.data,dir=d?.director,av=a.id==="dia"?diaSVG().replace('class="dia"','class="dia av"'):face(look(a));
+  const tabs=[["now","Right now"],["tasks","Tasks"],["history","History"]];
+  profEl.innerHTML=`<header><div class="pav">${av}</div><div><b>${esc(a.name)}</b><span>${esc(a.role)} · ${esc(DEPTS[a.dept]?.name||"")}</span>
+      <span class="tag ${a.kind==="human"?"human":""}">${a.kind==="human"?"HUMAN":a.id==="dia"?"VIRTUAL OWNER":"AI AGENT"}</span> <small>${a.tasks_done??0} tasks done</small></div>
+      <button class="btn icon" type="button" data-pclose aria-label="Close profile">✕</button></header>
+    <div class="ptabs" role="tablist">${tabs.map(([k,l])=>`<button type="button" role="tab" data-ptab="${k}" aria-selected="${prof.tab===k}">${l}</button>`).join("")}</div>
+    <div class="pbody">${prof.tab==="now"?`<div id="pNow"></div>
+      <div class="pscreen" aria-label="Live screen"><div class="pbar"><i></i><i></i><i></i><span id="pScrTitle"></span></div><pre id="pScr"></pre></div>
+      <p class="note">An illustration of ${esc(a.name)}'s screen, made from the task they are on right now.</p>
+      ${a.id!=="dia"?`<button class="btn" type="button" data-pmeet>📋 Call ${esc(DEPTS[a.dept]?.name||"the team")} to a meeting</button> <span class="msg" id="pMeetMsg"></span>`:""}`
+    :!d?'<p class="empty">Loading…</p>':!dir?'<p class="empty">🔒 Unlock with the director key to see their tasks and history.</p>'
+    :prof.tab==="tasks"?tasksHTML(d,a):historyHTML(d,a)}</div>`;
+  renderNow(true);
+}
+function tasksHTML(d,a){
+  const open=d.tasks.filter(t=>t.status!=="done"),done=d.tasks.filter(t=>t.status==="done");
+  const pill2=s=>pill(s,{done:"ok",working:"eng",queued:"marigold",failed:"kumkum"}[s]||"dia");
+  return `<h4>Now</h4><p>${a.status&&a.status!=="Idle"?esc(a.status):'<span class="empty">Nothing in progress.</span>'}</p>
+    <h4>Open jobs <span class="pill">${open.length}</span></h4>${open.length?`<ul class="plist">${open.map(t=>`<li>${pill2(t.status)} <b>${esc(t.title)}</b><small>Request #${t.request_id} · ${esc(t.request||"")} · ${esc(t.kind)}</small></li>`).join("")}</ul>`:'<p class="empty">No open jobs from requests.</p>'}
+    <h4>Build plan tasks <span class="pill">${d.planned.length}</span></h4>${d.planned.length?`<ul class="plist">${d.planned.map(t=>`<li>${pill(t.stage,"eng")} <b>${esc(t.title)}</b><small>${esc(t.wo||"")} · ${esc(t.company)} · ${t.days||"?"} days</small></li>`).join("")}</ul>`:'<p class="empty">No project tasks in Neel\'s plans.</p>'}
+    <h4>Finished jobs <span class="pill">${done.length}</span></h4>${done.length?`<ul class="plist">${done.slice(0,30).map(t=>`<li>${pill2(t.status)} ${esc(t.title)}<small>Request #${t.request_id} · ${ago(t.done_at||t.created_at)}</small></li>`).join("")}</ul>`:'<p class="empty">None yet.</p>'}`;
+}
+function historyHTML(d,a){
+  const name=id=>S.agents.find(x=>x.id===id)?.name||id;
+  const items=[...d.history.map(x=>({at:x.created_at,icon:x.data?.meeting?"📋":x.agent_id===a.id?"✔":"•",text:x.agent_id===a.id?x.text:`${name(x.agent_id)} ${x.text}`})),
+    ...d.handoffs.map(h=>({at:h.at,icon:"📄",text:h.from===a.id?`handed “${h.label}” to ${name(h.to)}`:`got “${h.label}” from ${name(h.from)}`}))]
+    .sort((x,y)=>new Date(y.at)-new Date(x.at));
+  return items.length?`<ol class="phist">${items.map(i=>`<li><time title="${esc(when(i.at))}">${ago(i.at)}</time><span>${i.icon}</span><p>${esc(i.text)}</p></li>`).join("")}</ol>
+    <p class="note">${d.history.length>=300?"Showing the latest 300 entries. ":""}Hand-overs are kept since the office last started.</p>`:'<p class="empty">Nothing yet.</p>';
+}
+// The "Right now" line and the live screen, refreshed several times a second while the profile is open.
+function renderNow(force){
+  if(!prof||prof.tab!=="now")return;
+  const a=S.agents.find(x=>x.id===prof.id);if(!a)return;
+  const w=window.Office3D?.whereIs(a.id),busy=a.status&&a.status!=="Idle",kind=busy?workKind(a.status):{k:"idle",l:"Idle"};
+  const away=w&&!/desk|cabin/i.test(w.doing);
+  const now=document.getElementById("pNow");
+  if(now){const html=`<dl class="kv"><dt>Doing</dt><dd>${w?esc(w.doing):"At their desk"}${w?` · ${esc(w.floor)}`:""}</dd>
+    <dt>Task</dt><dd>${busy?esc(a.status):"No task right now"}</dd><dt>Work</dt><dd>${pill(away&&!busy?"Away":kind.l,away&&!busy?"marigold":busy?"eng":"dia")}</dd></dl>`;
+    if(force||now.dataset.h!==html){now.innerHTML=html;now.dataset.h=html}}
+  const key=busy?a.status:"idle:"+(w?.doing||"");
+  if(force||prof.screen.key!==key){
+    const latest=prof.data?.history?.find(x=>x.agent_id===a.id&&x.data)?.data;
+    prof.screen={key,lines:busy?screenLines(a,kind.k,latest&&(latest.report||latest.plan||latest.content||latest.campaign||latest.evaluation||null)):
+      [away?`🔒 Screen locked: ${w.doing.toLowerCase()}`:"🔒 Screen locked: no task right now","","Waiting for the next job."],i:0,c:0,pause:0};
+    const tl=document.getElementById("pScrTitle");if(tl)tl.textContent=busy?kind.l+" · "+a.name:"Locked";
+  }
+}
+function tickScreen(){
+  const el=document.getElementById("pScr");if(!el||!prof)return;const s=prof.screen;
+  if(s.i>=s.lines.length){if((s.pause+=1)>30){s.i=0;s.c=0;s.pause=0}}
+  else{s.c+=3;if(s.c>=s.lines[s.i].length){s.i++;s.c=0}}
+  el.textContent=s.lines.slice(0,s.i).join("\n")+(s.i<s.lines.length?(s.i?"\n":"")+s.lines[s.i].slice(0,s.c):"")+"▌";
+}
+profEl.addEventListener("click",async e=>{
+  if(e.target.closest("[data-pclose]"))return closeProfile();
+  const t=e.target.closest("[data-ptab]");if(t){prof.tab=t.dataset.ptab;renderProfile();return}
+  if(e.target.closest("[data-pmeet]")){const a=S.agents.find(x=>x.id===prof.id),m=document.getElementById("pMeetMsg");
+    const team=[a.id,...S.agents.filter(x=>x.dept===a.dept&&x.id!==a.id).map(x=>x.id)];
+    if(team.length<2)team.push(...S.agents.filter(x=>x.id!=="dia"&&x.id!==a.id).slice(0,2).map(x=>x.id));
+    try{await api("/api/meetings",{method:"POST",body:JSON.stringify({title:`${DEPTS[a.dept]?.name||"Team"} planning`,people:team})});m.textContent="They're on their way to the meeting room."}
+    catch(err){m.textContent=err.message}}
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!profEl.hidden)closeProfile()});
 function renderKpis(){
   const s=S.stats,team=S.agents.filter(a=>a.id!=="dia").length;
   const it=[[team,"Team"],[s.leads,"Leads"],[s.hot,"Hot"],[s.won,"Won"],[s.live,"Live"],...(S.director?[["₹"+((s.revenue||0)/1e5).toFixed(1)+"L","Revenue"],
@@ -390,8 +500,9 @@ function connect(){
     if(m.type==="activity"){S.activity.unshift(m.item);S.activity=S.activity.slice(0,60);
       const a=S.agents.find(x=>x.id===m.item.agent_id);if(a)a.tasks_done++;
       const el=document.createElement("div");el.className="ev";el.innerHTML=evHTML(m.item);feed.querySelector(".empty")?.remove();feed.prepend(el);
-      if(m.item.agent_id===selected)renderWho()}
-    if(m.type==="handoff")fly(m.from,m.to,m.label);
+      if(m.item.agent_id===selected)renderWho();profileSoon(m.item.agent_id)}
+    if(m.type==="handoff"){fly(m.from,m.to,m.label);profileSoon(m.from);profileSoon(m.to)}
+    if(m.type==="meeting"){window.Office3D?.meeting(m.title,m.people,m.seconds);for(const id of m.people)profileSoon(id)}
     if(m.type==="approval"){S.approvals.push(m.item);renderApprovals()}
     if(m.type==="approval_done"){S.approvals=S.approvals.filter(a=>a.id!==m.id);renderApprovals()}
     if(m.type==="refresh")refreshSoon();
@@ -517,7 +628,7 @@ recBody.onclick=async e=>{
 function init3d(){
   const O=window.Office3D;if(!O)return;
   document.getElementById("stage").hidden=false;floor.hidden=true;
-  O.onSelect=id=>{selected=id;renderWho();if(id==="dia"){document.getElementById("askIn").focus();O.wave()}};
+  O.onSelect=id=>{selected=id;renderWho();openProfile(id);if(id==="dia")O.wave()};
   if(S.agents.length){O.setAgents(S.agents);for(const a of S.agents)if(a.status&&a.status!=="Idle")O.bubble(a.id,a.status,a.id!=="dia")}
 }
 window.addEventListener("office3d-ready",init3d);
