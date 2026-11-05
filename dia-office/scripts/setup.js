@@ -45,23 +45,28 @@ if (!token || token === "change-me-to-a-long-random-string") {
   env = env.replace(/^ADMIN_TOKEN=.*$/m, `ADMIN_TOKEN=${token}`);
 }
 if (dbUrl) env = env.replace(/^DATABASE_URL=.*$/m, `DATABASE_URL=${dbUrl}`);
+// Asks for a key, or keeps the one already in .env when you just press Enter. Pasting on Windows can add
+// invisible characters (bracketed-paste markers, a stray \r), so the key is picked out of whatever arrived.
+async function askKey(name, prefix, envKey) {
+  const saved = env.match(new RegExp(`^${envKey}=(.*)$`, "m"))?.[1]?.trim() || "";
+  const have = saved.startsWith(prefix);
+  const typed = await askHidden(`Paste your ${name} key (it stays hidden; right-click pastes in cmd) and press Enter${have ? ` to replace the saved one, or just Enter to keep it (ending ...${saved.slice(-4)})` : ""}: `);
+  const key = typed.match(new RegExp(`${prefix.replace(/-/g, "\\-")}[A-Za-z0-9_\\-]+`))?.[0];
+  if (key) return key;
+  if (!typed && have) return saved;
+  console.log(`${typed ? `That doesn't look like a ${name} key (they start with ${prefix}).` : "Nothing was pasted."} Nothing was changed.\n` +
+    `Another way: open .env in Notepad, put the key after ${envKey}= and save, then run this again and just press Enter.`);
+  process.exit(1);
+}
 if (useAnthropic) {
-  const key = await askHidden("Paste your Anthropic API key (it stays hidden) and press Enter: ");
-  if (!key.startsWith("sk-ant-")) {
-    console.log("That doesn't look like an Anthropic key (they start with sk-ant-). Nothing was changed.");
-    process.exit(1);
-  }
+  const key = await askKey("Anthropic API", "sk-ant-", "ANTHROPIC_API_KEY");
   env = setVar(env, "LLM_PROVIDER", "anthropic");
   env = setVar(env, "ANTHROPIC_API_KEY", key);
   if (!/^ANTHROPIC_FAST_MODEL=/m.test(env)) env = setVar(env, "ANTHROPIC_FAST_MODEL", "claude-sonnet-5-5");
   if (!/^ANTHROPIC_SMART_MODEL=/m.test(env)) env = setVar(env, "ANTHROPIC_SMART_MODEL", "claude-opus-5-5");
 }
 if (useOpenRouter) {
-  const key = await askHidden("Paste your OpenRouter key from openrouter.ai/keys (it stays hidden) and press Enter: ");
-  if (!key.startsWith("sk-or-")) {
-    console.log("That doesn't look like an OpenRouter key (they start with sk-or-). Nothing was changed.");
-    process.exit(1);
-  }
+  const key = await askKey("OpenRouter", "sk-or-", "OPENROUTER_API_KEY");
   env = setVar(env, "LLM_PROVIDER", "openrouter");
   env = setVar(env, "OPENROUTER_API_KEY", key);
 }
