@@ -33,14 +33,18 @@ const res = await fetch(`${(process.env.OPENROUTER_BASE_URL || "https://openrout
 if (!res.ok) { console.log(`Could not read OpenRouter's model list (HTTP ${res.status}). Check your internet and try again.`); process.exit(1); }
 const all = (await res.json()).data;
 const isFree = m => Number(m.pricing?.prompt) === 0 && Number(m.pricing?.completion) === 0;
-const makesText = m => (m.architecture?.output_modalities || ["text"]).includes("text");
-const free = all.filter(m => isFree(m) && makesText(m) && (m.context_length || 0) >= 16000);
+// A chat model: reads text and writes only text (music, speech and picture models also list "text" but can't do the work).
+const chat = m => (m.architecture?.input_modalities || ["text"]).includes("text") && (m.architecture?.output_modalities || ["text"]).every(o => o === "text");
+// Stealth models are unnamed test models; OpenRouter says it logs what is sent to them, and the team sends client details.
+const stealth = m => /^stealth\//.test(m.id) || /stealth|cloaked/i.test(m.name || "");
+const free = all.filter(m => isFree(m) && chat(m) && !stealth(m) && (m.context_length || 0) >= 16000);
 const json = m => (m.supported_parameters || []).some(p => p === "response_format" || p === "structured_outputs");
 
-function best(kind) {
+function rankFor(kind) {
   const rank = m => { const i = PREFER[kind].findIndex(p => m.id.includes(p)); return i < 0 ? 99 : i; };
-  return [...free].sort((a, b) => rank(a) - rank(b) || json(b) - json(a) || (b.context_length || 0) - (a.context_length || 0))[0];
+  return [...free].sort((a, b) => rank(a) - rank(b) || json(b) - json(a) || (b.context_length || 0) - (a.context_length || 0));
 }
+const best = kind => rankFor(kind)[0];
 
 if (!free.length) { console.log("OpenRouter has no free text models right now. Use paid ones (see openrouter.ai/models)."); process.exit(1); }
 const picks = { OPENROUTER_SMART_MODEL: best("smart"), OPENROUTER_FAST_MODEL: best("fast") };
@@ -48,7 +52,7 @@ for (const kind of ["code", "writing"]) for (const id of KIND[kind]) picks[`OPEN
 for (const kind of ["code", "writing", "smart"]) for (const d of DEPT_KIND[kind]) picks[`OPENROUTER_MODEL_DEPT_${d.toUpperCase()}`] = best(kind);
 // If the first choice is busy or out of free requests, OpenRouter tries these.
 const backups = [...new Set(Object.values(picks).map(m => m.id))].slice(0, 3);
-const fallback = free.filter(m => !backups.includes(m.id)).sort((a, b) => (b.context_length || 0) - (a.context_length || 0)).slice(0, 2).map(m => m.id);
+const fallback = rankFor("fast").filter(m => !backups.includes(m.id)).slice(0, 2).map(m => m.id);
 
 const who = id => AGENTS.find(a => a.id === id);
 console.log(`${free.length} free text models on OpenRouter today. Best pick for each job:\n`);
