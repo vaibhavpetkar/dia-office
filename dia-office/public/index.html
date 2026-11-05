@@ -16,6 +16,8 @@
     </div>
     <div class="kpis" id="kpis"></div>
     <div class="ctrls">
+      <span class="bellwrap"><button class="btn bell" id="bBell" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="bellPanel" title="Things waiting for you">🔔 <span class="count" id="bellN" data-n="0">0</span></button>
+        <div class="bellpanel" id="bellPanel" hidden role="dialog" aria-label="Waiting for you"></div></span>
       <span class="key"><input id="key" type="password" placeholder="Director key" autocomplete="off" aria-label="Director key (ADMIN_TOKEN from .env)" title="Paste ADMIN_TOKEN from your .env file, then press Unlock"><button class="btn" id="bKey">Unlock</button></span>
       <button class="btn primary" id="bLead">+ New lead</button>
       <button class="btn primary" id="bCand">+ New candidate</button>
@@ -226,7 +228,7 @@ function screenLines(a,kind,latest){
   const real=latest?String(typeof latest==="string"?latest:JSON.stringify(latest,null,1)).split("\n").map(l=>l.slice(0,70)).filter(Boolean).slice(0,6):[];
   const L={
     code:[`$ git switch -c ${slug}`,`// ${t}`,"export async function handler(req, res) {","  const rows = await db.query(sql, params);","  if (!rows.length) return res.status(404).end();","  res.json(rows);","}","$ npm run build","✓ built in 2.4s"],
-    debug:["$ npm test","✗ 1 failing","  at checkout.js:42",`// ${t}`,"- const total = price * qty;","+ const total = Math.round(price * qty * 100) / 100;","$ npm test","✓ all passing"],
+    debug:["$ dia self-check","✓ database","✓ AI provider","… looking for work that stopped half-way",`↻ ${t}`,"✓ handed back to the team"],
     test:[`▶ ${t}`,"✓ home page loads (200)","✓ no broken links","✓ form shows errors","! an image has no alt text","✓ fits a 375px phone","4 passed · 1 warning"],
     deploy:[`# ${t}`,"$ docker build -t app .","$ aws ecr push app:latest","$ aws ecs update-service --force-new-deployment","… waiting for health checks","✓ healthy in ap-south-1"],
     write:[`✎ ${t}`,...(real.length?real:["Headline: what changed for the client","Two lines on the problem they had","What we built, in plain words","One number that shows the result"])],
@@ -238,8 +240,9 @@ function screenLines(a,kind,latest){
 async function openProfile(id){
   if(!id)return;
   clearInterval(prof?.timer);
-  prof={id,data:null,tab:prof?.id===id?prof.tab:"now",screen:{lines:[],i:0,c:0,key:""}};
-  profEl.hidden=false;renderProfile();profEl.focus({preventScroll:true});
+  prof={id,data:null,tab:prof?.id===id?prof.tab:"now",screen:{lines:[],i:0,c:0,key:""},talk:null};
+  if(prof.tab==="talk"&&id==="dia")prof.tab="now";
+  profEl.hidden=false;renderProfile();profEl.focus({preventScroll:true});if(prof.tab==="talk")loadTalk();
   prof.timer=setInterval(()=>{tickScreen();renderNow()},110);
   await loadProfile();
 }
@@ -255,7 +258,9 @@ function renderProfile(){
   if(!prof)return;
   const a=S.agents.find(x=>x.id===prof.id)||prof.data?.agent;if(!a){profEl.innerHTML="";return}
   const d=prof.data,dir=d?.director,av=a.id==="dia"?diaSVG().replace('class="dia"','class="dia av"'):face(look(a));
-  const tabs=[["now","Right now"],["tasks","Tasks"],["history","History"]];
+  const tabs=[["now","Right now"],["tasks","Tasks"],["history","History"],...(a.id!=="dia"?[["talk","Talk"]]:[])];
+  // Keep what you were typing when the drawer redraws.
+  const keep={ask:document.getElementById("pAskIn")?.value,instr:document.getElementById("pInstr")?.value,focus:document.activeElement?.id};
   profEl.innerHTML=`<header><div class="pav">${av}</div><div><b>${esc(a.name)}</b><span>${esc(a.role)} · ${esc(DEPTS[a.dept]?.name||"")}</span>
       <span class="tag ${a.kind==="human"?"human":""}">${a.kind==="human"?"HUMAN":a.id==="dia"?"VIRTUAL OWNER":"AI AGENT"}</span> <small>${a.tasks_done??0} tasks done</small></div>
       <button class="btn icon" type="button" data-pclose aria-label="Close profile">✕</button></header>
@@ -265,8 +270,29 @@ function renderProfile(){
       <p class="note">An illustration of ${esc(a.name)}'s screen, made from the task they are on right now.</p>
       ${a.id!=="dia"?`<button class="btn" type="button" data-pmeet>📋 Call ${esc(DEPTS[a.dept]?.name||"the team")} to a meeting</button> <span class="msg" id="pMeetMsg"></span>`:""}`
     :!d?'<p class="empty">Loading…</p>':!dir?'<p class="empty">🔒 Unlock with the director key to see their tasks and history.</p>'
-    :prof.tab==="tasks"?tasksHTML(d,a):historyHTML(d,a)}</div>`;
+    :prof.tab==="tasks"?tasksHTML(d,a):prof.tab==="talk"?talkHTML(a):historyHTML(d,a)}</div>`;
+  if(prof.tab==="talk"){const ai=document.getElementById("pAskIn"),ins=document.getElementById("pInstr");
+    if(ai&&keep.ask!=null)ai.value=keep.ask;if(ins&&keep.instr!=null&&prof.instrDirty)ins.value=keep.instr;
+    if(keep.focus&&document.getElementById(keep.focus))document.getElementById(keep.focus).focus();
+    const box=document.getElementById("pChat");if(box)box.scrollTop=box.scrollHeight}
   renderNow(true);
+}
+function talkHTML(a){
+  const c=prof.talk;if(!c)return'<p class="empty">Loading…</p>';if(c.error)return`<p class="empty">${esc(c.error)}</p>`;
+  return `<h4>Standing instructions</h4><p class="note" style="margin-top:0">${esc(a.name)} follows these in all their AI work from now on.</p>
+    <textarea id="pInstr" class="pinstr" rows="3" placeholder="e.g. Always quote a template website first when the budget is under ₹50,000">${esc(c.instructions)}</textarea>
+    <div class="row"><button type="button" class="btn" data-pinstr>Save instructions</button><span class="msg" id="pInstrMsg"></span></div>
+    <h4>Talk to ${esc(a.name)}</h4>
+    <div class="msgs pchat" id="pChat" aria-live="polite">${c.messages.length?c.messages.map(m=>`<div class="m ${m.role==="director"?"me":"dia"}"><p>${esc(m.text)}</p></div>`).join(""):`<p class="empty">Ask ${esc(a.name)} about their work, or tell them how you want something done.</p>`}
+      ${c.waiting?'<div class="m dia typing"><p><i></i><i></i><i></i></p></div>':""}</div>
+    <form class="ask" id="pAsk"><input id="pAskIn" autocomplete="off" placeholder="Message ${esc(a.name)}…" aria-label="Message to ${esc(a.name)}"><button class="btn primary">Send</button></form>
+    <p class="msg" id="pTalkMsg">${c.note?esc(c.note):""}</p>`;
+}
+async function loadTalk(){
+  const id=prof?.id;if(!id)return;
+  if(!unlocked){prof.talk={error:"🔒 Unlock with the director key to talk to the team."};renderProfile();return}
+  try{const j=await api(`/api/agents/${encodeURIComponent(id)}/chat`);if(prof?.id===id){prof.talk=j;prof.instrDirty=false;renderProfile()}}
+  catch(e){if(prof?.id===id){prof.talk={error:e.message};renderProfile()}}
 }
 function tasksHTML(d,a){
   const open=d.tasks.filter(t=>t.status!=="done"),done=d.tasks.filter(t=>t.status==="done");
@@ -310,12 +336,27 @@ function tickScreen(){
 }
 profEl.addEventListener("click",async e=>{
   if(e.target.closest("[data-pclose]"))return closeProfile();
-  const t=e.target.closest("[data-ptab]");if(t){prof.tab=t.dataset.ptab;renderProfile();return}
+  const t=e.target.closest("[data-ptab]");if(t){prof.tab=t.dataset.ptab;renderProfile();if(prof.tab==="talk")loadTalk();return}
+  if(e.target.closest("[data-pinstr]")){const m=document.getElementById("pInstrMsg");
+    try{const j=await api(`/api/agents/${encodeURIComponent(prof.id)}/instructions`,{method:"PUT",body:JSON.stringify({instructions:document.getElementById("pInstr").value})});
+      prof.talk.instructions=j.instructions;prof.instrDirty=false;renderProfile();document.getElementById("pInstrMsg").textContent="Saved. They'll follow this from their next piece of work."}
+    catch(err){m.textContent=err.message}return}
   if(e.target.closest("[data-pmeet]")){const a=S.agents.find(x=>x.id===prof.id),m=document.getElementById("pMeetMsg");
     const team=[a.id,...S.agents.filter(x=>x.dept===a.dept&&x.id!==a.id).map(x=>x.id)];
     if(team.length<2)team.push(...S.agents.filter(x=>x.id!=="dia"&&x.id!==a.id).slice(0,2).map(x=>x.id));
     try{await api("/api/meetings",{method:"POST",body:JSON.stringify({title:`${DEPTS[a.dept]?.name||"Team"} planning`,people:team})});m.textContent="They're on their way to the meeting room."}
     catch(err){m.textContent=err.message}}
+});
+profEl.addEventListener("input",e=>{if(e.target.id==="pInstr"&&prof)prof.instrDirty=true});
+profEl.addEventListener("submit",async e=>{
+  if(e.target.id!=="pAsk")return;e.preventDefault();
+  const inp=document.getElementById("pAskIn"),text=inp.value.trim(),id=prof?.id;if(!text||!id||prof.talk?.waiting)return;
+  inp.value="";prof.talk.messages.push({role:"director",text});prof.talk.waiting=true;prof.talk.note="";renderProfile();
+  try{const j=await api(`/api/agents/${encodeURIComponent(id)}/chat`,{method:"POST",body:JSON.stringify({message:text})});
+    if(prof?.id!==id)return;prof.talk.messages.push(j.message);
+    if(j.remembered){prof.talk.instructions=[prof.talk.instructions,j.remembered].filter(Boolean).join("\n");prof.talk.note=`Saved as a standing instruction: “${j.remembered}”`}}
+  catch(err){if(prof?.id===id)prof.talk.note=err.message}
+  if(prof?.id===id){prof.talk.waiting=false;renderProfile()}
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!profEl.hidden)closeProfile()});
 function renderKpis(){
@@ -488,7 +529,37 @@ async function load(){
   S=await r.json();setupEl.hidden=true;mainEl.hidden=false;
   renderFloor();renderKpis();renderApprovals();renderProjects();renderFeed();renderWho();renderStart();
 }
-let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(()=>{load();if(!recBody.querySelector("tr.open"))loadRecords()},400)};
+let refreshT;const refreshSoon=()=>{clearTimeout(refreshT);refreshT=setTimeout(()=>{load();loadBell();if(!recBody.querySelector("tr.open"))loadRecords()},400)};
+/* ---------- Bell: everything waiting for you ---------- */
+const bellBtn=document.getElementById("bBell"),bellPanel=document.getElementById("bellPanel"),bellN=document.getElementById("bellN");
+let BELL={count:0,items:[]},bellSeen=new Set(),bellFirst=true;
+const BELLICON={decision:"⚖️",ticket:"🎫",marketing:"📣",lead:"🌱",problem:"⚠️"};
+async function loadBell(){
+  if(!unlocked){bellN.textContent="0";bellN.dataset.n="0";document.title="Dia's Virtual Office";return}
+  try{BELL=await api("/api/notifications")}catch{return}
+  bellN.textContent=BELL.count;bellN.dataset.n=BELL.count;
+  document.title=(BELL.count?`(${BELL.count}) `:"")+"Dia's Virtual Office";
+  // A desktop alert for each new thing that needs you, if you turned alerts on.
+  for(const i of BELL.items.filter(i=>i.urgent)){const k=i.kind+i.title;if(!bellSeen.has(k)){bellSeen.add(k);
+    if(!bellFirst&&"Notification" in window&&Notification.permission==="granted"&&document.hidden)try{new Notification("Dia: "+i.detail,{body:i.title,tag:k})}catch{}}}
+  bellFirst=false;if(!bellPanel.hidden)renderBell();
+}
+function renderBell(){
+  const alerts="Notification" in window&&Notification.permission==="default"?'<button type="button" class="btn" data-alerts>Turn on desktop alerts</button>':"";
+  bellPanel.innerHTML=`<h3>Waiting for you <span class="count" data-n="${BELL.count}">${BELL.count}</span></h3>${!unlocked?'<p class="empty">🔒 Unlock with the director key.</p>'
+    :BELL.items.length?`<ul class="belllist">${BELL.items.map((i,n)=>`<li><button type="button" data-bell="${n}" class="${i.urgent?"urgent":""}"><span>${BELLICON[i.kind]||"•"}</span><span><b>${esc(i.title)}</b><small>${esc(i.detail||"")} · ${ago(i.at)}</small></span></button></li>`).join("")}</ul>`
+    :'<p class="empty">Nothing is waiting for you. 🎉</p>'}${alerts}`;
+}
+bellBtn.onclick=()=>{const open=bellPanel.hidden;bellPanel.hidden=!open;bellBtn.setAttribute("aria-expanded",open);if(open){renderBell();loadBell()}};
+bellPanel.onclick=async e=>{
+  if(e.target.closest("[data-alerts]")){try{await Notification.requestPermission()}catch{}renderBell();return}
+  const b=e.target.closest("[data-bell]");if(!b)return;const i=BELL.items[+b.dataset.bell];bellPanel.hidden=true;bellBtn.setAttribute("aria-expanded","false");
+  if(i.go==="decisions"){const c=document.getElementById("approvals").closest(".card");c.scrollIntoView({behavior:"smooth",block:"center"});c.classList.add("flash");setTimeout(()=>c.classList.remove("flash"),1600)}
+  else if(i.go.startsWith("rec:")){recTab=i.go.slice(4);await loadRecords();document.getElementById("records").scrollIntoView({behavior:"smooth"})}
+  else document.getElementById("askIn").focus();
+};
+document.addEventListener("click",e=>{if(!bellPanel.hidden&&!e.target.closest(".bellwrap")){bellPanel.hidden=true;bellBtn.setAttribute("aria-expanded","false")}});
+setInterval(()=>loadBell(),60*1000);
 let ws;
 const wsAuth=()=>{if(KEY&&ws?.readyState===1)ws.send(JSON.stringify({type:"auth",key:KEY}))};
 function connect(){
@@ -503,8 +574,8 @@ function connect(){
       if(m.item.agent_id===selected)renderWho();profileSoon(m.item.agent_id)}
     if(m.type==="handoff"){fly(m.from,m.to,m.label);profileSoon(m.from);profileSoon(m.to)}
     if(m.type==="meeting"){window.Office3D?.meeting(m.title,m.people,m.seconds);for(const id of m.people)profileSoon(id)}
-    if(m.type==="approval"){S.approvals.push(m.item);renderApprovals()}
-    if(m.type==="approval_done"){S.approvals=S.approvals.filter(a=>a.id!==m.id);renderApprovals()}
+    if(m.type==="approval"){S.approvals.push(m.item);renderApprovals();loadBell()}
+    if(m.type==="approval_done"){S.approvals=S.approvals.filter(a=>a.id!==m.id);renderApprovals();loadBell()}
     if(m.type==="refresh")refreshSoon();
   };
   ws.onclose=()=>{document.getElementById("prov").textContent="reconnecting…";setTimeout(()=>{connect();load().catch(()=>{})},2000)};
@@ -514,7 +585,7 @@ function connect(){
 const keyIn=document.getElementById("key");keyIn.value=KEY;
 document.getElementById("bKey").onclick=async()=>{
   KEY=keyIn.value.trim();try{localStorage.setItem("diaKey",KEY)}catch{}
-  try{await api("/api/auth/check");const was=unlocked;unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked";wsAuth();load().catch(()=>{});loadRecords();if(!was)greet()}
+  try{await api("/api/auth/check");const was=unlocked;unlocked=true;keyIn.classList.remove("need");document.getElementById("bKey").textContent="Unlocked";wsAuth();load().catch(()=>{});loadRecords();loadBell();if(!was)greet()}
   catch(e){unlocked=false;document.getElementById("bKey").textContent=/ADMIN_TOKEN is not set/.test(e.message)?"Key not set":"Wrong key"}
   loadKb();
 };
@@ -549,16 +620,31 @@ const when=t=>t?new Date(t).toLocaleString("en-IN",{day:"numeric",month:"short",
 const pill=(t,c)=>`<span class="pill" style="--c:var(--${c})">${esc(t)}</span>`;
 const tempCol={hot:"kumkum",warm:"marigold",cold:"eng"},statCol={pending:"marigold",approved:"ok",rejected:"kumkum",hired:"ok",passed:"ok",failed:"kumkum",won:"ok",declined:"kumkum",
   running:"eng",awaiting_signoff:"marigold",stopped:"dia",pass:"ok",fail:"kumkum",warn:"marigold",
-  new:"eng",awaiting_approval:"marigold",answered:"ok",needs_you:"kumkum",closed:"dia",draft:"marigold",sent:"eng",paid:"ok",cancelled:"kumkum"};
+  nurture:"marigold",held:"kumkum",qualified:"ok","being analysed":"eng",new:"eng",awaiting_approval:"marigold",answered:"ok",needs_you:"kumkum",closed:"dia",draft:"marigold",sent:"eng",paid:"ok",cancelled:"kumkum"};
 function table(cols,rows,detail){
   if(!rows.length)return'<p class="empty">Nothing here yet.</p>';
   return `<div class="tblwrap"><table><thead><tr>${cols.map(c=>`<th>${c[0]}</th>`).join("")}</tr></thead><tbody>${rows.map((r,i)=>
     `<tr class="${detail?"click":""}" data-i="${i}">${cols.map(c=>`<td>${c[1](r)}</td>`).join("")}</tr>${detail?`<tr class="detail" hidden><td colspan="${cols.length}">${detail(r)}</td></tr>`:""}`).join("")}</tbody></table></div>`;
 }
+// What each lead status means, in words.
+const LEADSTAT={new:"being analysed",qualified:"with Sameer / Dia",nurture:"nurturing",held:"held",won:"won",declined:"declined"};
+const listOf=a=>Array.isArray(a)&&a.length?`<ul>${a.map(x=>`<li>${esc(typeof x==="string"?x:JSON.stringify(x))}</li>`).join("")}</ul>`:"";
+function leadDetail(r){
+  const t=r.report,canMove=["nurture","held"].includes(r.status)||(r.status==="new"&&!t);
+  const why=r.status==="nurture"?`Meera rated this lead <b>${esc(r.temperature)}</b> (${r.score}/100), so it did not go to Sameer. Kabir emailed the client her questions and is waiting for their answers. It is not stuck.`
+    :r.status==="held"?"Sameer looked at it and held it, so it didn't reach Dia."
+    :r.status==="new"?"Meera is still analysing it. If this has been more than a few minutes, Dia's self-check restarts it (every 5 minutes).":"";
+  return `${why?`<p class="note" style="margin-top:0">${why}</p>`:""}
+    ${t?`<p>${esc(t.summary||"")}</p><dl class="kv"><dt>Meera's estimate</dt><dd>${inr(t.estimate_inr)}${t.timeline_weeks?` · ${esc(t.timeline_weeks)} weeks`:""}</dd>
+      ${t.moved_by_director?`<dt>Moved forward</dt><dd>by you${t.director_note?`: “${esc(t.director_note)}”`:""}</dd>`:""}</dl>
+      ${t.scope?.length?`<h4>Scope</h4>${listOf(t.scope)}`:""}${t.questions_for_client?.length?`<h4>Questions for the client</h4>${listOf(t.questions_for_client)}`:""}
+      ${t.risks?.length?`<h4>Risks</h4>${listOf(t.risks)}`:""}`:'<p class="empty">Meera hasn\'t finished the report yet.</p>'}
+    ${canMove?`<div class="row"><button type="button" class="btn yes" data-adv="${r.id}">Move forward to Sameer</button><span class="msg" id="advm${r.id}"></span></div>`:""}`;
+}
 const REC={
   leads:{path:"/api/records/leads",render:rows=>table([["Company",r=>`<b>${esc(r.company)}</b><br><small>${esc(r.contact||"")} ${esc(r.email||"")}</small>`],["Need",r=>esc(r.need)],
-    ["Budget",r=>inr(r.budget)],["Score",r=>r.score??"…"],["Lead",r=>r.temperature?pill(r.temperature,tempCol[r.temperature]||"eng"):"…"],["Status",r=>esc(r.status)],["Source",r=>esc(r.source||"")],["Added",r=>when(r.created_at)]],
-    rows,r=>r.report?`<pre class="rep">${esc(JSON.stringify(r.report,null,2))}</pre>`:'<p class="empty">Meera hasn\'t finished the report yet.</p>')},
+    ["Budget",r=>inr(r.budget)],["Score",r=>r.score??"…"],["Lead",r=>r.temperature?pill(r.temperature,tempCol[r.temperature]||"eng"):"…"],["Status",r=>pill(LEADSTAT[r.status]||r.status,statCol[r.status]||"eng")],["Source",r=>esc(r.source||"")],["Added",r=>when(r.created_at)]],
+    rows,leadDetail)},
   candidates:{path:"/api/records/candidates",render:rows=>table([["Name",r=>`<b>${esc(r.name)}</b><br><small>${esc(r.email||"")}</small>`],["Role",r=>esc(r.role)],
     ["Type",r=>r.kind==="ai"?"AI agent":"Human"],["Scores",r=>r.evaluation?`${r.evaluation.interview_score} / ${r.evaluation.task_score}`:"—"],["Status",r=>pill(r.status,statCol[r.status]||"eng")],
     ["Interview link",r=>r.interview_link?`<button type="button" class="btn copy" data-copy="${esc(r.interview_link)}">Copy link</button>`:"—"],["Added",r=>when(r.created_at)]],
@@ -614,6 +700,11 @@ recBody.onclick=async e=>{
   if(c){try{await navigator.clipboard.writeText(c.dataset.copy);c.textContent="Copied"}catch{c.outerHTML=`<input class="mono" readonly value="${esc(c.dataset.copy)}" onfocus="this.select()">`}return}
   const pd=e.target.closest("[data-paid]"),cl=e.target.closest("[data-close]");
   if(pd||cl){const b=pd||cl;b.disabled=true;try{await api(pd?`/api/invoices/${pd.dataset.paid}/paid`:`/api/tickets/${cl.dataset.close}/close`,{method:"POST",body:"{}"});loadRecords()}catch(err){b.textContent=err.message}return}
+  const adv=e.target.closest("[data-adv]");
+  if(adv){const note=prompt("Anything Sameer should know? (optional, e.g. the client can stretch the budget)");if(note===null)return;adv.disabled=true;
+    const msg=document.getElementById("advm"+adv.dataset.adv);
+    try{await api(`/api/leads/${adv.dataset.adv}/advance`,{method:"POST",body:JSON.stringify({note})});msg.textContent="Sent to Sameer. Watch him walk it over to Dia.";loadBell()}
+    catch(err){adv.disabled=false;msg.textContent=err.message}return}
   const mt=e.target.closest("[data-mt]");
   if(mt){const note=mt.dataset.r==="fail"?prompt("What went wrong? (optional)")||"":"";mt.disabled=true;
     try{await api(`/api/test-runs/${mt.dataset.mt}/manual`,{method:"POST",body:JSON.stringify({index:+mt.dataset.i,result:mt.dataset.r,note})});
@@ -749,7 +840,7 @@ window.DiaFace?.mount(document.querySelector("#diaMini canvas"));window.DiaFace?
 let wsOn=false;
 async function start(){
   try{await health();voiceNote();if(!H.db.ok){showSetup();return}
-    await load();init3d();await checkKey();loadKb();loadRecords();if(!wsOn){wsOn=true;connect()}}
+    await load();init3d();await checkKey();loadKb();loadRecords();loadBell();if(!wsOn){wsOn=true;connect()}}
   catch(e){if(e.message!=="setup"){H={offline:true,db:{ok:false}};showSetup();setTimeout(start,4000)}}
 }
 start();

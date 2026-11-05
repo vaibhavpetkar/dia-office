@@ -427,3 +427,48 @@ test("planning a project starts with a team meeting, and hand-overs show in both
   const neel = (await call("/api/agents/neel")).body;
   assert.ok(neel.handoffs.some(h => h.to === "tara" && h.label === "Tasks"));
 });
+
+const coldLead = (need, prefix = "Cold Co") => { for (let i = 0; ; i++) if (50 + Math.floor(seeded(`${prefix} ${i}` + need)() * 46) < 55) return `${prefix} ${i}`; };
+
+test("a cold lead waits in nurture, shows on the bell, and the director can move it forward", async () => {
+  const need = "menu website for a small cafe", company = coldLead(need);
+  await call("/api/leads", { method: "POST", body: { company, need, budget: 20000 } });
+  const lead = await waitFor(() => row("SELECT * FROM leads WHERE company=$1 AND status='nurture'", [company]), "nurture");
+  assert.equal(lead.temperature, "cold");
+  const bell = (await call("/api/notifications")).body;
+  assert.ok(bell.items.some(i => i.kind === "lead" && i.lead_id === lead.id), "nurture lead is listed on the bell");
+  assert.ok([401, 429].includes((await call("/api/notifications", { key: "" })).status), "the bell is director-only");
+
+  assert.equal((await call(`/api/leads/${lead.id}/advance`, { method: "POST", body: { note: "They can stretch the budget" } })).status, 200);
+  const ap = await waitFor(() => row("SELECT * FROM approvals WHERE kind='project' AND ref_id=$1 AND status='pending'", [lead.id]), "project approval after moving forward");
+  assert.match(ap.title, new RegExp(company));
+  const after = await row("SELECT status, report FROM leads WHERE id=$1", [lead.id]);
+  assert.equal(after.report.moved_by_director, true);
+  assert.equal(after.report.director_note, "They can stretch the budget");
+  const bell2 = (await call("/api/notifications")).body;
+  assert.ok(bell2.items.some(i => i.kind === "decision" && i.title.includes(company)), "the decision is on the bell");
+  assert.ok(bell2.count >= 1);
+  assert.equal((await call(`/api/leads/${lead.id}/advance`, { method: "POST", body: {} })).status, 400, "can't move it twice while it waits for you");
+  await call(`/api/approvals/${ap.id}`, { method: "POST", body: { decision: "reject" } });
+});
+
+test("the director can talk to a team member and give standing instructions", async () => {
+  const r = await call("/api/agents/meera/chat", { method: "POST", body: { message: "What are you working on?" } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.message.role, "agent");
+  assert.match(r.body.message.text, /Meera/);
+  assert.equal((await call("/api/agents/meera/instructions", { method: "PUT", body: { instructions: "Rate restaurant leads warm at least." } })).status, 200);
+  const c = (await call("/api/agents/meera/chat")).body;
+  assert.equal(c.instructions, "Rate restaurant leads warm at least.");
+  assert.deepEqual(c.messages.map(m => m.role), ["director", "agent"]);
+  assert.equal((await call("/api/agents/nobody/chat", { method: "POST", body: { message: "hi" } })).status, 404);
+  assert.ok([401, 429].includes((await call("/api/agents/meera/chat", { key: "" })).status), "director-only");
+});
+
+test("Dia explains nurture leads instead of calling them stuck", async () => {
+  const need = "brochure site", company = coldLead(need, "Quiet Co");
+  await call("/api/leads", { method: "POST", body: { company, need, budget: 15000 } });
+  await waitFor(() => row("SELECT 1 FROM leads WHERE company=$1 AND status='nurture'", [company]), "nurture");
+  const r = await call("/api/dia/chat", { method: "POST", body: { message: "why are all leads pending and stuck?" } });
+  assert.match(r.body.reply, /aren't stuck/);
+});

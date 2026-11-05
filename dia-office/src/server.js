@@ -5,11 +5,13 @@ import { WebSocketServer } from "ws";
 import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { q, one, migrate, dbHint, reloadDatabaseUrl } from "./db.js";
-import { attach, log, meeting, handoffs } from "./events.js";
+import { attach, log, meeting, handoffs, problems } from "./events.js";
 import { monthSpendUSD } from "./llm.js";
 import { addDoc, search, listDocs } from "./kb.js";
 import { decide } from "./workflows/approvals.js";
-import { newLead } from "./workflows/sales.js";
+import { newLead, advanceLead } from "./workflows/sales.js";
+import { conversation, setInstructions, talkTo } from "./staff.js";
+import { forgetTries } from "./selfcheck.js";
 import { newCandidate, getInterview, submitAnswers } from "./workflows/hiring.js";
 import { setStage, STAGES } from "./workflows/engineering.js";
 import { chat } from "./assistant.js";
@@ -181,6 +183,42 @@ app.post("/api/leads", admin, wrap(async (req, res) => {
   need(req.body, ["company", "need"]);
   res.status(202).json(await newLead(req.body));
 }));
+// Send a warm/cold (nurture) or held lead on to Sameer anyway, e.g. {"note":"They agreed to a bigger budget"}.
+app.post("/api/leads/:id/advance", admin, wrap(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  forgetTries(`lead:${id}`);
+  res.json(await advanceLead(id, String(req.body?.note || "").slice(0, 300)));
+}));
+
+// Talk to one team member, and set the standing instructions they follow in all their AI work.
+app.get("/api/agents/:id/chat", admin, wrap(async (req, res) => res.json(await conversation(req.params.id))));
+app.post("/api/agents/:id/chat", admin, wrap(async (req, res) => {
+  if (limited("staffchat", req.ip, 30, 60 * 1000)) return res.status(429).json({ error: "Too many messages. Wait a minute." });
+  res.json(await talkTo(req.params.id, req.body?.message));
+}));
+app.put("/api/agents/:id/instructions", admin, wrap(async (req, res) => res.json(await setInstructions(req.params.id, req.body?.instructions))));
+
+// Everything waiting on the director, for the bell at the top of the page.
+app.get("/api/notifications", admin, wrap(async (_req, res) => {
+  const [approvals, leads, marketing, tickets] = await Promise.all([
+    q("SELECT id, kind, title, created_at FROM approvals WHERE status='pending' ORDER BY created_at DESC"),
+    q(`SELECT id, company, temperature, score, status, created_at FROM leads WHERE status IN ('nurture','held')
+       AND created_at > now() - interval '14 days' ORDER BY created_at DESC LIMIT 20`),
+    q("SELECT id, company, created_at FROM projects WHERE marketing IS NOT NULL AND marketing->'review' IS NULL ORDER BY created_at DESC"),
+    q("SELECT id, customer, subject, created_at FROM tickets WHERE status='needs_you' ORDER BY created_at DESC")
+  ]);
+  const hour = Date.now() - 60 * 60 * 1000;
+  const items = [
+    ...approvals.rows.map(a => ({ kind: "decision", urgent: true, title: a.title, detail: "Dia needs your decision", at: a.created_at, go: "decisions" })),
+    ...tickets.rows.map(t => ({ kind: "ticket", urgent: true, title: `Ticket #${t.id} from ${t.customer}: ${t.subject}`, detail: "Kavya needs you to answer this one", at: t.created_at, go: "rec:tickets" })),
+    ...marketing.rows.map(p => ({ kind: "marketing", urgent: true, title: `${p.company} case study and post`, detail: "Isha's drafts are waiting for your approval", at: p.created_at, go: "rec:projects" })),
+    ...leads.rows.map(l => ({ kind: "lead", urgent: false, lead_id: l.id, title: `${l.company}: ${l.status === "held" ? "held by Sameer" : `${l.temperature} lead (${l.score}/100), nurturing`}`,
+      detail: "Waiting for the client. Press Move forward to send it to Sameer anyway.", at: l.created_at, go: "rec:leads" })),
+    ...problems.filter(p => Date.parse(p.at) > hour).slice(0, 5).map(p => ({ kind: "problem", urgent: false, title: p.text, detail: p.error, at: p.at, go: "chat" }))
+  ];
+  res.json({ count: items.filter(i => i.urgent).length, items });
+}));
+
 // Hook for a CRM (HubSpot/Zoho webhook, a form, a call log): same body, same token.
 app.post("/api/webhooks/lead", admin, wrap(async (req, res) => {
   need(req.body, ["company", "need"]);
