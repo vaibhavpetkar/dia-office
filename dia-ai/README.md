@@ -1,6 +1,6 @@
 # Dia AI — Smart Company API (starter)
 
-AI CEO → Managers → Worker agents → Tools, built on Claude (Anthropic API, or Amazon Bedrock).
+AI CEO → Managers → Worker agents → Tools, built on Claude (Anthropic API, or Amazon Bedrock) or any model on OpenRouter.
 
 This version has the **CEO** and four managers working end to end: **Sales**, **Support**, **Creative** and **Communication**.
 Every new department copies the pattern in `dia/sales.py`.
@@ -56,6 +56,21 @@ All lines should say `[OK]`. This step needs no API key.
    ```
    The Anthropic API has no image model, so with `DIA_IMAGE_PROVIDER=off` the Creative team writes an image brief
    instead of a picture. Set it to `bedrock` once you have Amazon Nova Canvas access (needs step 3b below).
+
+### 3a. Or connect OpenRouter (one key, free models too)
+1. Create a key at https://openrouter.ai/keys and paste it after `OPENROUTER_API_KEY=` in `.env`.
+2. Set the provider and models, using names from https://openrouter.ai/models (free ones end in `:free`):
+   ```
+   DIA_PROVIDER=openrouter
+   DIA_CEO_MODEL_ID=deepseek/deepseek-r1:free
+   DIA_WORKER_MODEL_ID=deepseek/deepseek-chat-v3-0324:free
+   OPENROUTER_FALLBACK_MODELS=meta-llama/llama-3.3-70b-instruct:free
+   ```
+   Paid Claude works too, e.g. `anthropic/claude-opus-5.5`. Run `pip install -r requirements.txt` again (it adds the OpenAI client).
+3. `python check_setup.py` tests both models and lists today's free ones. Free models allow about 50 requests a day
+   in total (about 1,000 once you add $10 of credits); a CEO goal uses several, one per manager and worker step.
+4. Pictures: `DIA_IMAGE_PROVIDER=openrouter` and `DIA_IMAGE_MODEL_ID=google/gemini-2.5-flash-image` (Nano Banana, paid,
+   about $0.04 a picture).
 
 ### 3b. Or connect Amazon Bedrock instead
 Set `DIA_PROVIDER=bedrock` in `.env`, then:

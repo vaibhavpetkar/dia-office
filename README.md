@@ -20,4 +20,4 @@ Inveon Technologies' AI-run company. This repo holds two apps that are planned t
    ```
 4. Open http://localhost:8080 and paste the director key that `npm run setup` printed.
 
-The office runs in `mock` AI mode by default, which is free. The Python app in `dia-ai/` needs no database; its `selftest.py` runs offline without an API key or AWS account. Both apps can use an Anthropic API key from console.anthropic.com instead of Bedrock.
+The office runs in `mock` AI mode by default, which is free. The Python app in `dia-ai/` needs no database; its `selftest.py` runs offline without an API key or AWS account. Both apps can use an Anthropic API key from console.anthropic.com instead of Bedrock, or an OpenRouter key (openrouter.ai) for Claude, GPT, Gemini and free models.

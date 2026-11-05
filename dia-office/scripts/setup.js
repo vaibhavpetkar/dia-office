@@ -2,6 +2,7 @@
 // Creates .env from .env.example with a fresh ADMIN_TOKEN.
 // Optional: npm run setup -- "postgres://..."   sets the database
 //           npm run setup -- anthropic           asks for your Anthropic API key (typed hidden) and turns Claude on
+//           npm run setup -- openrouter          asks for your OpenRouter key (typed hidden) and turns OpenRouter on
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -11,7 +12,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 const envPath = root + ".env";
 const args = process.argv.slice(2);
 const useAnthropic = args.includes("anthropic");
-const dbUrl = args.find(a => a !== "anthropic");
+const useOpenRouter = args.includes("openrouter");
+const dbUrl = args.find(a => a !== "anthropic" && a !== "openrouter");
 
 // Reads a line without showing it, so the key never appears on screen or in shell history.
 function askHidden(question) {
@@ -28,10 +30,10 @@ const setVar = (env, key, value) => new RegExp(`^${key}=.*$`, "m").test(env)
   ? env.replace(new RegExp(`^${key}=.*$`, "m"), () => `${key}=${value}`)
   : `${env.trimEnd()}\n${key}=${value}\n`;
 
-if (existsSync(envPath) && !dbUrl && !useAnthropic) {
+if (existsSync(envPath) && !dbUrl && !useAnthropic && !useOpenRouter) {
   const key = readFileSync(envPath, "utf8").match(/^ADMIN_TOKEN=(.*)$/m)?.[1]?.trim();
   if (key && key !== "change-me-to-a-long-random-string") {
-    console.log(`.env already exists, so nothing was changed.\n  Director key: ${key}\nTo set the database, run: npm run setup -- "postgres://user:pass@host/db?sslmode=require"\nTo use Claude with an Anthropic API key, run: npm run setup -- anthropic`);
+    console.log(`.env already exists, so nothing was changed.\n  Director key: ${key}\nTo set the database, run: npm run setup -- "postgres://user:pass@host/db?sslmode=require"\nTo use Claude with an Anthropic API key, run: npm run setup -- anthropic\nTo use OpenRouter (free and paid models), run: npm run setup -- openrouter`);
     process.exit(0);
   }
 }
@@ -54,12 +56,22 @@ if (useAnthropic) {
   if (!/^ANTHROPIC_FAST_MODEL=/m.test(env)) env = setVar(env, "ANTHROPIC_FAST_MODEL", "claude-sonnet-5-5");
   if (!/^ANTHROPIC_SMART_MODEL=/m.test(env)) env = setVar(env, "ANTHROPIC_SMART_MODEL", "claude-opus-5-5");
 }
+if (useOpenRouter) {
+  const key = await askHidden("Paste your OpenRouter key from openrouter.ai/keys (it stays hidden) and press Enter: ");
+  if (!key.startsWith("sk-or-")) {
+    console.log("That doesn't look like an OpenRouter key (they start with sk-or-). Nothing was changed.");
+    process.exit(1);
+  }
+  env = setVar(env, "LLM_PROVIDER", "openrouter");
+  env = setVar(env, "OPENROUTER_API_KEY", key);
+}
 writeFileSync(envPath, env);
 
 const k = env.match(/^ANTHROPIC_API_KEY=(.*)$/m)?.[1]?.trim() || "";
+const ork = env.match(/^OPENROUTER_API_KEY=(.*)$/m)?.[1]?.trim() || "";
 console.log(`Saved .env
   Director key (paste it into the office page): ${token}
   Database: ${env.match(/^DATABASE_URL=(.*)$/m)?.[1]}
-  AI: ${env.match(/^LLM_PROVIDER=(.*)$/m)?.[1]} (mock = free canned answers)${k.startsWith("sk-ant-") ? `\n  Anthropic key: saved (ending ...${k.slice(-4)})` : ""}
+  AI: ${env.match(/^LLM_PROVIDER=(.*)$/m)?.[1]} (mock = free canned answers)${k.startsWith("sk-ant-") ? `\n  Anthropic key: saved (ending ...${k.slice(-4)})` : ""}${ork.startsWith("sk-or-") ? `\n  OpenRouter key: saved (ending ...${ork.slice(-4)})` : ""}
 
-Next: npm start, then open http://localhost:${env.match(/^PORT=(.*)$/m)?.[1] || 8080}`);
+${useOpenRouter ? "Pick the best free model for each job: npm run openrouter:models -- --save\n" : ""}Next: npm start, then open http://localhost:${env.match(/^PORT=(.*)$/m)?.[1] || 8080}`);
