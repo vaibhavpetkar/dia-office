@@ -3,8 +3,8 @@
 import { q } from "./db.js";
 import { monthSpendUSD, OPENROUTER_URL, OPENROUTER_DEFAULTS } from "./llm.js";
 import { OPENROUTER_IMAGE_DEFAULT } from "./media.js";
-import { log, status, problems, problem } from "./events.js";
-import { run as runLead } from "./workflows/sales.js";
+import { log, status, idle, problems, problem } from "./events.js";
+import { run as runLead, isLeadRunning } from "./workflows/sales.js";
 import { prepare, evaluate } from "./workflows/hiring.js";
 import { startEngineering, promote } from "./workflows/engineering.js";
 import { triage } from "./workflows/support.js";
@@ -15,6 +15,8 @@ import { repairable } from "./repair.js";
 const STUCK_AFTER = "3 minutes";
 const MAX_TRIES = 2;
 const tries = new Map(); // "lead:4" -> attempts, so a flow that keeps failing isn't retried forever
+// When the director restarts something by hand, it gets its full number of automatic restarts again.
+export const forgetTries = key => tries.delete(key);
 
 async function stuckWork() {
   const [leads, candidates, projects, tickets, testRuns, requests] = await Promise.all([
@@ -30,7 +32,7 @@ async function stuckWork() {
     q(`SELECT id, title FROM requests WHERE status IN ('planning', 'working') AND created_at < now() - interval '${STUCK_AFTER}'`)
   ]);
   return [
-    ...leads.rows.map(l => ({ key: `lead:${l.id}`, label: `lead ${l.company}`, fix: () => runLead(l) })),
+    ...leads.rows.filter(l => !isLeadRunning(l.id)).map(l => ({ key: `lead:${l.id}`, label: `lead ${l.company}`, fix: () => runLead(l) })),
     ...candidates.rows.map(c => ({ key: `cand:${c.id}`, label: `candidate ${c.name}`,
       fix: () => c.status === "evaluating" ? evaluate(c.id) : prepare(c) })),
     ...projects.rows.map(p => ({ key: `proj:${p.id}`, label: `project ${p.company}`,
@@ -124,7 +126,11 @@ export async function selfCheck({ repair = true, getHealth } = {}) {
 // Run once shortly after start (picks up work lost in a restart), then every 5 minutes.
 export function scheduleSelfCheck(getHealth) {
   const tick = () => getHealth().db.ok && selfCheck({ getHealth })
-    .then(r => r.repaired.length && status("dia", `Fixed ${r.repaired.length} stuck item${r.repaired.length > 1 ? "s" : ""}`, false))
+    .then(async r => {
+      if (!r.repaired.length) return;
+      await status("dia", `Restarted ${r.repaired.length} stuck item${r.repaired.length > 1 ? "s" : ""}: ${r.repaired.join(", ")}`, false);
+      setTimeout(() => idle("dia").catch(() => {}), 60 * 1000).unref?.();
+    })
     .catch(e => problem("self-check failed", e));
   setTimeout(tick, 5000);
   setInterval(tick, 5 * 60 * 1000).unref();

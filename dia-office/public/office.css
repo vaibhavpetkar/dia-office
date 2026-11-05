@@ -335,3 +335,23 @@ a.btn{text-decoration:none;display:inline-block}
 .phist p{margin:0}
 .o3d-bub.note{font-size:.9rem;padding:2px 8px;background:color-mix(in srgb,var(--marigold) 12%,var(--surface))}
 .records,.stagecol{min-width:0}.recbody{overflow-x:auto;max-width:100%} /* wide record tables scroll inside the card on phones */
+
+/* Bell: everything waiting for the director */
+.bellwrap{position:relative;display:inline-block}
+.btn.bell{display:inline-flex;align-items:center;gap:4px}
+.bellpanel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;width:min(360px,calc(100vw - 32px));max-height:min(70vh,520px);overflow:auto;
+  background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:0 18px 50px rgba(0,0,0,.22);padding:12px;text-align:left}
+.bellpanel[hidden]{display:none}
+.bellpanel h3{margin:0 0 8px;font-size:.95rem;display:flex;gap:6px;align-items:center}
+.belllist{list-style:none;margin:0 0 8px;padding:0;display:grid;gap:4px}
+.belllist button{width:100%;display:grid;grid-template-columns:22px 1fr;gap:6px;text-align:left;font:inherit;font-size:.82rem;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:7px 8px;cursor:pointer}
+.belllist button.urgent{border-color:color-mix(in srgb,var(--kumkum) 45%,var(--line))}
+.belllist button:hover{border-color:var(--peacock)}
+.belllist small{display:block;color:var(--muted);font-size:.72rem;margin-top:2px}
+.card.flash{outline:3px solid var(--marigold);outline-offset:2px;transition:outline-color .4s}
+@media (max-width:1040px){.bellpanel{position:fixed;left:16px;right:16px;top:auto;width:auto;margin-top:6px}}
+/* Talk tab in a profile */
+.pinstr{width:100%;box-sizing:border-box;font:inherit;font-size:.82rem;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);resize:vertical}
+.pbody .row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.pchat{max-height:none;min-height:120px;margin-bottom:8px}
+.recbody ul{margin:4px 0;padding-left:18px;font-size:.85rem}

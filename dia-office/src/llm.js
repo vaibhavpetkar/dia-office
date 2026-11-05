@@ -87,29 +87,83 @@ export function parseJSON(text) {
  * Returns parsed JSON. `mock` is a function returning the canned answer used in mock mode.
  * `need` lists keys the answer must have; a reply that isn't valid JSON or misses one is retried once.
  */
-export async function ask({ agent, tier = "fast", system, prompt, mock, maxTokens = 900, need = [] }) {
+export async function ask({ agent, tier = "fast", system, prompt, mock, maxTokens = 900, need = [], plain }) {
   const budget = parseFloat(process.env.MONTHLY_AI_BUDGET_USD || "0");
   if (P() !== "mock" && budget > 0 && (await monthSpendUSD()) >= budget)
     throw new Error(`Monthly AI budget of $${budget} reached. Raise MONTHLY_AI_BUDGET_USD to continue.`);
 
   const model = await modelFor(tier, agent);
-  const sys = system + "\nReply with ONE JSON object only, no markdown, no extra text.";
+  const told = P() === "mock" ? "" : await instructionsFor(agent);
+  const sys = system + (told ? `\nStanding instructions from the director (follow them): ${told}` : "") +
+    "\nReply with ONE JSON object only, no markdown, no extra text.";
   const check = text => {
-    const j = parseJSON(text);
-    const miss = need.filter(k => j[k] === undefined || j[k] === null);
+    const j = shape(parseJSON(text), need);
+    const miss = need.filter(k => empty(j[k]));
     if (miss.length) throw new Error(`AI answer is missing ${miss.join(", ")}`);
     return j;
   };
-  try { return check(await callModel(agent, tier, model, sys, prompt, maxTokens, mock)); }
+  let first, second;
+  try { return check(first = await callModel(agent, tier, model, sys, prompt, maxTokens, mock)); }
   catch (e) {
     if (P() === "mock" || !/JSON|missing|Unexpected|position/.test(e.message)) throw e;
-    const retry = `${prompt}\n\nYour previous reply could not be used (${e.message}). Reply again with exactly the JSON object asked for.`;
+    const retry = `${prompt}\n\nYour previous reply could not be used (${e.message}). Reply again with exactly the JSON object asked for` +
+      (need.length ? `, with the keys ${need.join(", ")}.` : ".");
     // A model that couldn't give JSON once usually can't twice, so with OpenRouter the retry goes to a backup
     // model first, with more room in case the first one spent its tokens thinking.
     const next = P() === "openrouter" ? openRouterFallbacks().find(m => m !== model) || model : model;
-    return check(await callModel(agent, tier, next, sys, retry, maxTokens * 2, mock));
+    try { return check(second = await callModel(agent, tier, next, sys, retry, maxTokens * 2, mock)); }
+    catch (e2) {
+      // For a chat answer, plain words beat an error: use them as the reply.
+      const words = plain && (plainText(second) || plainText(first));
+      if (words) return { [plain]: words };
+      throw e2;
+    }
   }
 }
+
+const empty = v => v === undefined || v === null || v === "";
+// Free models often name keys a little differently ("Reply", "answer", "final_score") or wrap the answer
+// one level deep ({"response":{...}}). This maps those onto the keys asked for, and "true"/"false" text to booleans.
+const ALIASES = {
+  reply: ["answer", "response", "message", "text", "content", "output"],
+  score: ["lead_score", "rating"], temperature: ["temp", "lead_temperature"],
+  escalate: ["escalation", "should_escalate"], recommendation: ["decision", "recommend"], recommend: ["recommendation", "hire"],
+  pass: ["passed"], summary: ["overview"]
+};
+const norm = k => String(k).toLowerCase().replace(/[^a-z0-9]/g, "");
+export function shape(j, need = []) {
+  if (!j || typeof j !== "object" || Array.isArray(j)) return j;
+  const missing = () => need.filter(k => empty(j[k]));
+  if (missing().length) {
+    const holder = Object.values(j).find(v => v && typeof v === "object" && !Array.isArray(v) &&
+      need.every(k => Object.keys(v).some(x => norm(x) === norm(k))));
+    if (holder) j = { ...j, ...holder };
+  }
+  for (const k of missing()) {
+    const names = [k, ...(ALIASES[k] || [])].map(norm);
+    const found = names.map(n => Object.keys(j).find(x => norm(x) === n && !empty(j[x]))).find(Boolean);
+    if (found) j[k] = j[found];
+  }
+  for (const [k, v] of Object.entries(j)) if (typeof v === "string" && /^(true|false)$/i.test(v.trim())) j[k] = v.trim().toLowerCase() === "true";
+  return j;
+}
+// A reply with no JSON in it, cleaned up to use as plain words.
+function plainText(text) {
+  const t = String(text || "").replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").replace(/```[a-z]*/gi, "").trim();
+  return t && !/^[[{]/.test(t) ? t.slice(0, 1200) : "";
+}
+
+// What the director told a team member to always do (saved from their profile). Re-read at most every 30 seconds.
+const toldCache = new Map();
+export async function instructionsFor(agent) {
+  if (!agent) return "";
+  const c = toldCache.get(agent);
+  if (c && Date.now() - c.at < 30000) return c.text;
+  const text = (await one("SELECT instructions FROM agents WHERE id=$1", [agent]).catch(() => null))?.instructions || "";
+  toldCache.set(agent, { text, at: Date.now() });
+  return text;
+}
+export const forgetInstructions = agent => toldCache.delete(agent);
 
 async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
   let text, inTok = 0, outTok = 0, reportedCost = null;

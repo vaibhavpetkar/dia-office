@@ -99,6 +99,9 @@ The staff move about the 3D office:
 - **Meetings.** Neel calls the team to the floor 1 **meeting room** to plan each project, and Dia's kick-off for a request brings in everyone with a task. They sit round the table, take turns to talk (the screen on the wall shows the topic), then go back to their own chairs. You can call one from anyone's profile, or with `POST /api/meetings`.
 - **Breaks.** Someone with nothing to do now and then gets a coffee at the floor 1 coffee corner, uses the washroom, or has a snack in the ground-floor canteen.
 - **Profiles.** Click anyone to open their profile: what they are doing right now (at their desk, walking to someone, in a meeting, on a break), their current task, an illustration of their screen for that kind of work (code, debugging, tests, a deploy, writing), their open and finished jobs, their build tasks from Neel's plans, and their full history including meetings and hand-overs. Tasks and history need the director key.
+- **Talk to anyone.** The **Talk** tab in a profile lets you chat with that person about their work, and set **standing instructions** they follow in all their AI work from then on (e.g. "quote a template site first when the budget is under ₹50,000"). If you tell them a rule in chat, they save it there themselves.
+- **🔔 Waiting for you.** The bell at the top lists everything that needs you: decisions, tickets Kavya can't answer, marketing drafts to approve, nurture leads you may want to push, and recent problems. The tab title shows the count, and **Turn on desktop alerts** pops up a notification for each new one while the page is in the background.
+- **Leads that stop at "nurture" aren't stuck.** Meera scores every lead, and only **hot** ones go on to Sameer and Dia. Warm and cold leads get Kabir's email with Meera's questions and wait for the client. Open the lead in Records → Leads and press **Move forward to Sameer** (or tell Dia "move Hotel garva forward") to send one on anyway.
 
 ## The Dia app (phone and desktop)
 
@@ -128,6 +131,10 @@ Point a HubSpot, Zoho or website-form webhook at `POST /api/webhooks/lead` with 
 | Method | Path | Who |
 |---|---|---|
 | GET | `/api/state` | anyone who can open the page |
+| GET, POST | `/api/agents/:id/chat` (talk to a team member: `{"message":"..."}`) | director |
+| PUT | `/api/agents/:id/instructions` (`{"instructions":"..."}`, their standing instructions) | director |
+| POST | `/api/leads/:id/advance` (send a nurture or held lead on to Sameer, `{"note":"..."}` optional) | director |
+| GET | `/api/notifications` (everything waiting for you, for the bell) | director |
 | GET | `/api/agents/:id` (profile: who they are and what they're doing; tasks, build tasks, hand-overs and history with the key) | anyone; details need the director key |
 | POST | `/api/meetings` `{title, people:["neel","tara",…]}` (2 to 8 people) | director key |
 | POST | `/api/leads`, `/api/webhooks/lead` | director key |

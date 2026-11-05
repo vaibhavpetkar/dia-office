@@ -27,6 +27,14 @@ before(async () => {
       if (j.model === "busy/model:free") { res.statusCode = 429; return res.end(JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day" } })); }
       if (j.model === "chatty/model:free")
         return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: "Sure! I can help with that lead." } }], usage: {} }));
+      if (j.model === "messy/meera:free")
+        return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: 'Here is my analysis:\n```json\n{"result":{"Score":"82","Temperature":"Hot","summary":"Good fit","estimate_inr":"250000"}}\n```' } }], usage: {} }));
+      if (j.model === "messy/sameer:free")
+        return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: '{"Escalate":"true","proposed_price_inr":"₹2,40,000","note":"ok"}' } }], usage: {} }));
+      if (j.model === "messy/dia:free")
+        return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: '<think>let me see {maybe}</think>{"Recommendation":"Take","reason":"Fits.","Client_Message":"Hello!"}' } }], usage: {} }));
+      if (j.model === "rememberer/model:free")
+        return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: '{"answer":"Noted, I will.","remember":"Copy the director on client emails."}' } }], usage: {} }));
       if (j.model === "thinker/model:free")
         return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: "", reasoning: 'Plan {draft}. Final: {"reply":"from thinking"}' } }], usage: {} }));
       if (j.modalities?.includes("image"))
@@ -140,4 +148,52 @@ test("a thinking model's answer is used when its reply text is empty", async () 
     const a = await llm.ask({ agent: "sameer", tier: "fast", system: "s", prompt: "p", need: ["reply"] });
     assert.equal(a.reply, "from thinking");
   } finally { delete process.env.OPENROUTER_MODEL_SAMEER; }
+});
+
+test("answers with differently named or nested keys still work", () => {
+  assert.equal(llm.shape({ Answer: "hi" }, ["reply"]).reply, "hi");
+  const j = llm.shape({ response: { Score: "82", Temperature: "HOT" } }, ["score", "temperature"]);
+  assert.equal(j.score, "82"); assert.equal(j.temperature, "HOT");
+  assert.equal(llm.shape({ escalate: "false" }, ["escalate"]).escalate, false);
+});
+
+test("a lead with a messy AI answer still reaches the director", async () => {
+  const sales = await import("../src/workflows/sales.js");
+  assert.deepEqual(sales.readTemperature({ score: "82/100", temperature: "HOT lead" }), { score: 82, temperature: "hot" });
+  assert.deepEqual(sales.readTemperature({ score: 40 }), { score: 40, temperature: "cold" });
+  process.env.OPENROUTER_MODEL_MEERA = "messy/meera:free";
+  process.env.OPENROUTER_MODEL_SAMEER = "messy/sameer:free";
+  process.env.OPENROUTER_MODEL_DIA = "messy/dia:free";
+  try {
+    const lead = await dbm.one("INSERT INTO leads (company, need, budget) VALUES ('Messy Co','restaurant site',250000) RETURNING *");
+    await sales.run(lead);
+    const l = await dbm.one("SELECT * FROM leads WHERE id=$1", [lead.id]);
+    assert.equal(l.temperature, "hot"); assert.equal(l.score, 82);
+    assert.ok(await dbm.one("SELECT 1 FROM approvals WHERE kind='project' AND ref_id=$1", [lead.id]), "Dia asked the director");
+    const ap = await dbm.one("SELECT body FROM approvals WHERE kind='project' AND ref_id=$1", [lead.id]);
+    assert.equal(ap.body.price, 240000, "price read from '₹2,40,000'");
+    assert.equal(ap.body.client_message, "Hello!");
+  } finally { delete process.env.OPENROUTER_MODEL_MEERA; delete process.env.OPENROUTER_MODEL_SAMEER; delete process.env.OPENROUTER_MODEL_DIA; }
+});
+
+test("Dia's chat uses plain words when the model won't give JSON", async () => {
+  const { chat } = await import("../src/assistant.js");
+  process.env.OPENROUTER_MODEL_DIA = "chatty/model:free";
+  try {
+    const r = await chat("hello", []);
+    assert.equal(r.reply, "Sure! I can help with that lead.");
+  } finally { delete process.env.OPENROUTER_MODEL_DIA; }
+});
+
+test("a team member remembers an instruction and uses it in their AI work", async () => {
+  const staff = await import("../src/staff.js");
+  await dbm.q("INSERT INTO agents (id,name,role,dept,kind,monthly_cost,look) VALUES ('kabir','Kabir','Lead Capture','sales','ai',0,'{}') ON CONFLICT (id) DO NOTHING");
+  process.env.OPENROUTER_MODEL_KABIR = "rememberer/model:free";
+  try {
+    const r = await staff.talkTo("kabir", "From now on, always copy me on client emails.");
+    assert.equal(r.remembered, "Copy the director on client emails.");
+    assert.match((await staff.conversation("kabir")).instructions, /Copy the director/);
+    await llm.ask({ agent: "kabir", system: "s", prompt: "p" });
+    assert.match(seen.at(-1).messages[0].content, /Standing instructions from the director \(follow them\): Copy the director on client emails\./);
+  } finally { delete process.env.OPENROUTER_MODEL_KABIR; }
 });

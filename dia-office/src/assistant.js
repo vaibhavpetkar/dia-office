@@ -17,7 +17,7 @@ async function snapshot() {
     q("SELECT id, kind, title, body FROM approvals WHERE status='pending' ORDER BY created_at"),
     q("SELECT id, company, need, stage, value FROM projects ORDER BY created_at DESC LIMIT 8"),
     q("SELECT a.text, g.name FROM activity a LEFT JOIN agents g ON g.id = a.agent_id ORDER BY a.created_at DESC LIMIT 8"),
-    q("SELECT company, temperature, score, status FROM leads ORDER BY created_at DESC LIMIT 8"),
+    q("SELECT id, company, temperature, score, status FROM leads ORDER BY created_at DESC LIMIT 8"),
     q("SELECT id, customer, subject, category, priority, status FROM tickets WHERE status <> 'closed' ORDER BY created_at DESC LIMIT 8"),
     q("SELECT id, number, company, label, total, status, due_date FROM invoices WHERE status IN ('draft','sent') ORDER BY id DESC LIMIT 8"),
     profitAndLoss(),
@@ -56,6 +56,9 @@ function toAction(a, snap) {
     return { label: `Mark ${inv.number} as paid`, method: "POST", path: `/api/invoices/${inv.id}/paid`, body: {} };
   if (a.type === "request" && a.brief)
     return { label: `Give the teams this job: ${String(a.brief).slice(0, 60)}${String(a.brief).length > 60 ? "…" : ""}`, method: "POST", path: "/api/v1/requests", body: { brief: String(a.brief).slice(0, 4000) } };
+  const lead = snap.leads.find(x => x.id === Number(a.lead_id));
+  if (a.type === "advance" && lead && ["nurture", "held", "new", "qualified"].includes(lead.status))
+    return { label: `Move ${lead.company} forward to Sameer`, method: "POST", path: `/api/leads/${lead.id}/advance`, body: { note: String(a.note || "").slice(0, 300) } };
   if (a.type === "repair") return { label: "Draft a code fix for my latest error", method: "POST", path: "/api/dia/repair", body: {} };
   if (a.type === "selfcheck") return { label: "Run my self-check and fix what I can", method: "POST", path: "/api/dia/selfcheck", body: {} };
   return null;
@@ -69,6 +72,13 @@ function mockReply(msg, snap) {
     return { reply: `Namaskar! I'm Dia. The office is running: ${s.team} people on the team, ${s.leads} leads, ${ap.length} decision${ap.length === 1 ? "" : "s"} waiting for you. What would you like to do?` };
   if (/^(please\s+)?(research|make|create|generate|design|draw|build|write|plan|prepare|find out)\b/.test(m) && !/\blead\b|ticket/.test(m))
     return { reply: "I'll read this, split it into jobs for the right teams and bring you the results. Press the button to start.", action: { type: "request", brief: msg.trim() } };
+  const mv = /(move|push|send|take).*(forward|ahead|on)|stuck|pending/.test(m) && snap.leads.filter(l => ["nurture", "held"].includes(l.status));
+  if (mv && mv.length && /lead|forward|ahead/.test(m)) {
+    const named = mv.find(l => m.includes(l.company.toLowerCase()));
+    if (named) return { reply: `I'll ask Sameer to look at ${named.company} even though Meera rated it ${named.temperature}.`, action: { type: "advance", lead_id: named.id } };
+    return { reply: `These leads aren't stuck: Meera rated them warm or cold, so Kabir sent the client questions and is waiting. ` +
+      mv.slice(0, 4).map(l => `${l.company} (${l.temperature}, ${l.score}/100)`).join(", ") + `. Say "move ${mv[0].company} forward" and I'll send it to Sameer anyway.` };
+  }
   if (/approv|decision|waiting|pending/.test(m)) {
     if (!ap.length) return { reply: "Nothing is waiting for you right now. I'll ask here before any hire or new project." };
     const first = ap[0];
@@ -155,19 +165,26 @@ export async function chat(message, history = [], lang = "en") {
   else {
     const kb = await context(message, 3);
     out = await ask({
-      agent: "dia", tier: "fast", maxTokens: 700, need: ["reply"],
+      agent: "dia", tier: "fast", maxTokens: 700, need: ["reply"], plain: "reply",
       system: COMPANY() + ` You are Dia, the warm, cheerful owner-assistant who runs this virtual office. ` +
         `You talk to the human director. Answer in 1-3 short spoken sentences, friendly and specific, using the office data. ` +
         `Reply in ${LANG_NAME[lang] || LANG_NAME.en}, the way a warm, educated person from Pune speaks it; keep company names and numbers as they are. ` +
         `You may suggest actions for the director to confirm: one, or up to 5 when they give you a bigger goal (split it into jobs for the right team). ` +
-        `Never claim an action is done; say you've prepared it.`,
+        `Never claim an action is done; say you've prepared it. ` +
+        `How leads move: Meera scores each one; only hot leads go to Sameer, then to you, then to the director's decision. ` +
+        `A lead with status "nurture" is not stuck: it was rated warm or cold and Kabir emailed the client questions. "held" means Sameer held it. ` +
+        `The director can send either on with an "advance" action.`,
       prompt: `Office data:\n${JSON.stringify(snap)}\n\nCompany knowledge:\n${kb}\n\n` +
         `Conversation so far:\n${history.slice(-8).map(h => `${h.role}: ${h.text}`).join("\n")}\n\nDirector: ${message}\n\n` +
         `Return {"reply":"...","actions":[] of up to 5 actions, each one of: {"type":"approve"|"reject","id":number} | {"type":"stage","project_id":number,"stage":"${STAGES.join("|")}"} | ` +
         `{"type":"qa","project_id":number,"url":"preview URL or omit"} | {"type":"lead","company":"...","need":"...","budget":number} | {"type":"candidate","name":"...","role":"...","dept":"${DEPTS.join("|")}","kind":"human|ai"} | ` +
-        `{"type":"ticket","customer":"...","subject":"...","message":"..."} | {"type":"paid","invoice_id":number} | ` +
+        `{"type":"ticket","customer":"...","subject":"...","message":"..."} | {"type":"paid","invoice_id":number} | {"type":"advance","lead_id":number,"note":"why"} (send a warm/cold or held lead on to Sameer anyway) | ` +
         `{"type":"doc","title":"...","content":"..."} | {"type":"request","brief":"the full requirement, for work the teams deliver: research, images, videos, builds, content"} | {"type":"selfcheck"} | {"type":"repair"}}`,
       mock: () => mockGoal(message, snap)
+    }).catch(e => {
+      // A free model that gives an odd answer twice shouldn't break the chat.
+      if (!/JSON|missing|Unexpected|position/.test(e.message)) throw e;
+      return { reply: "Sorry, my AI model gave me a muddled answer just then. Please ask again, or say it a little differently." };
     });
   }
   const actions = [...(Array.isArray(out.actions) ? out.actions : []), ...(out.action ? [out.action] : [])]
