@@ -58,10 +58,28 @@ export function seeded(key) {
   };
 }
 
-function parseJSON(text) {
-  const a = text.indexOf("{"), b = text.lastIndexOf("}");
-  if (a < 0 || b < a) throw new Error("AI did not return JSON");
-  return JSON.parse(text.slice(a, b + 1));
+// Free models often wrap the JSON in thinking, ```json fences or a sentence before and after it,
+// so this finds the first complete {...} object that parses, wherever it is in the reply.
+export function parseJSON(text) {
+  const t = String(text || "").replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/gi, "").replace(/^[\s\S]*<\/think(?:ing)?>/i, "");
+  try { const j = JSON.parse(t.trim()); if (j && typeof j === "object" && !Array.isArray(j)) return j; } catch {}
+  let firstError;
+  for (let a = t.indexOf("{"); a >= 0; a = t.indexOf("{", a + 1)) {
+    let depth = 0, inStr = false, esc = false;
+    for (let i = a; i < t.length; i++) {
+      const c = t[i];
+      if (inStr) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') inStr = false; continue; }
+      if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
+        try { return JSON.parse(t.slice(a, i + 1)); } catch (e) { firstError ??= e; }
+        break;
+      }
+    }
+  }
+  if (firstError) throw firstError;
+  const said = t.replace(/\s+/g, " ").trim().slice(0, 80);
+  throw new Error(`AI did not return JSON (${said ? `it said: "${said}${t.length > 80 ? "..." : ""}"` : "the reply was empty"})`);
 }
 
 /**
@@ -86,7 +104,10 @@ export async function ask({ agent, tier = "fast", system, prompt, mock, maxToken
   catch (e) {
     if (P() === "mock" || !/JSON|missing|Unexpected|position/.test(e.message)) throw e;
     const retry = `${prompt}\n\nYour previous reply could not be used (${e.message}). Reply again with exactly the JSON object asked for.`;
-    return check(await callModel(agent, tier, model, sys, retry, maxTokens, mock));
+    // A model that couldn't give JSON once usually can't twice, so with OpenRouter the retry goes to a backup
+    // model first, with more room in case the first one spent its tokens thinking.
+    const next = P() === "openrouter" ? openRouterFallbacks().find(m => m !== model) || model : model;
+    return check(await callModel(agent, tier, next, sys, retry, maxTokens * 2, mock));
   }
 }
 
@@ -136,6 +157,7 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
         ...(openRouterFallbacks().length ? { models: [model, ...openRouterFallbacks().filter(m => m !== model)] } : {}),
         messages: [{ role: "system", content: sys }, { role: "user", content: prompt }],
         response_format: { type: "json_object" }, // models that can't force JSON ignore this; the retry above still covers them
+        reasoning: { effort: "low" }, // thinking models: think briefly so the answer fits; others ignore this
         usage: { include: true } // ask OpenRouter to report the real cost of each call
       })
     });
@@ -147,7 +169,9 @@ async function callModel(agent, tier, model, sys, prompt, maxTokens, mock) {
       if (res.status === 402) throw new Error(`OpenRouter credits are used up (${msg}). Add credits at openrouter.ai/settings/credits.`);
       throw new Error(`OpenRouter error ${res.status} for model ${model}: ${msg}`);
     }
-    text = j.choices?.[0]?.message?.content || "";
+    const msg = j.choices?.[0]?.message || {};
+    // Thinking models can spend all their tokens thinking and leave the answer empty; the JSON may still be there.
+    text = msg.content || msg.reasoning || "";
     if (j.model) model = j.model; // the model that actually answered (a fallback, if the first was busy)
     inTok = j.usage?.prompt_tokens || 0; outTok = j.usage?.completion_tokens || 0;
     if (typeof j.usage?.cost === "number") reportedCost = j.usage.cost;
