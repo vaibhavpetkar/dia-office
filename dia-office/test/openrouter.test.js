@@ -25,6 +25,10 @@ before(async () => {
       seen.push({ auth: req.headers.authorization, ...j });
       res.setHeader("content-type", "application/json");
       if (j.model === "busy/model:free") { res.statusCode = 429; return res.end(JSON.stringify({ error: { message: "Rate limit exceeded: free-models-per-day" } })); }
+      if (j.model === "chatty/model:free")
+        return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: "Sure! I can help with that lead." } }], usage: {} }));
+      if (j.model === "thinker/model:free")
+        return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: "", reasoning: 'Plan {draft}. Final: {"reply":"from thinking"}' } }], usage: {} }));
       if (j.modalities?.includes("image"))
         return res.end(JSON.stringify({ model: j.model, choices: [{ message: { content: "", images: [{ type: "image_url", image_url: { url: `data:image/png;base64,${PNG.toString("base64")}` } }] } }], usage: { cost: 0.039 } }));
       res.end(JSON.stringify({ model: j.models?.[1] || j.model, choices: [{ message: { content: '{"reply":"hello"}' } }],
@@ -109,4 +113,31 @@ test("pictures come from the OpenRouter image model", async () => {
   const u = await lastUsage();
   assert.equal(u.model, "google/gemini-2.5-flash-image");
   assert.equal(u.cost, 0.039);
+});
+
+test("JSON is found inside thinking, fences and chatter", () => {
+  assert.deepEqual(llm.parseJSON('<think>maybe {a} or {"x":1}</think>\nHere you go:\n```json\n{"reply":"hi","n":{"a":"}"}}\n```\nThanks!'), { reply: "hi", n: { a: "}" } });
+  assert.deepEqual(llm.parseJSON('Note {not json} then {"ok":true}'), { ok: true });
+  assert.throws(() => llm.parseJSON("Sure! I can help."), /did not return JSON \(it said: "Sure! I can help\."\)/);
+  assert.throws(() => llm.parseJSON(""), /reply was empty/);
+});
+
+test("a model that answers without JSON is retried on a backup model", async () => {
+  process.env.OPENROUTER_MODEL_SAMEER = "chatty/model:free";
+  process.env.OPENROUTER_FALLBACK_MODELS = "openai/gpt-oss-120b";
+  try {
+    const a = await llm.ask({ agent: "sameer", tier: "fast", system: "s", prompt: "p", need: ["reply"], maxTokens: 500 });
+    assert.equal(a.reply, "hello");
+    assert.equal(seen.at(-1).model, "openai/gpt-oss-120b");
+    assert.equal(seen.at(-1).max_tokens, 1000, "the retry gets more room");
+    assert.deepEqual(seen.at(-1).reasoning, { effort: "low" });
+  } finally { delete process.env.OPENROUTER_MODEL_SAMEER; delete process.env.OPENROUTER_FALLBACK_MODELS; }
+});
+
+test("a thinking model's answer is used when its reply text is empty", async () => {
+  process.env.OPENROUTER_MODEL_SAMEER = "thinker/model:free";
+  try {
+    const a = await llm.ask({ agent: "sameer", tier: "fast", system: "s", prompt: "p", need: ["reply"] });
+    assert.equal(a.reply, "from thinking");
+  } finally { delete process.env.OPENROUTER_MODEL_SAMEER; }
 });
